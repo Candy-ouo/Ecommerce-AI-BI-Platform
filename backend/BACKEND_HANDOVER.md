@@ -2,7 +2,7 @@
 
 负责人：C
 分支：`feature/c-backend`
-最后更新：2026-07-20
+最后更新：2026-07-20（同步 B 的 ai_design.md v2.0）
 
 ---
 
@@ -111,6 +111,56 @@ FIELDS TERMINATED BY ',' ENCLOSED BY '"'
 IGNORE 1 ROWS;
 ```
 
+### 3.4 `ai/insights.py`（新完成，可选接入）
+
+B 新增了 AI 数据洞察模块：输入 KPI 字典 → LLM 生成三段式中文分析报告（核心指标概览 + 趋势异常 + 运营建议）。
+
+```python
+from ai.insights import generate_insights
+kpi = {"dau": 8230, "total_orders": 3900, "buy_conversion": 0.377}
+report = generate_insights(kpi)  # → 约 200-300 字中文分析
+```
+
+> C 可在 `/api/kpi/cards` 或 `/api/trend/active` 返回时附带 AI 分析文本，增强前端可读性。非必须。
+
+### 3.5 `chat.py` 集成参考（B 第 4 节提供）
+
+B 文档给出了完整的 `/api/chat` 调用链路（含安全拒绝）：
+
+```python
+from ai.nl2sql.sql_generator import generate_sql
+from ai.nl2sql.result_explainer import explain_result
+from backend.services.hive_client import query
+
+result = generate_sql(user_question)
+
+# ⚠️ 处理非数据问题的安全拒绝
+if result["sql"] == "UNABLE_TO_ANSWER":
+    yield f"data: {json.dumps({'type': 'text', 'content': '抱歉，我目前只能回答数据分析相关的问题。'})}\n\n"
+    return
+
+df = query(result["sql"])
+answer = explain_result(user_question, result["sql"], df)
+```
+
+> 将来接 `chat.py` 时直接参考这段，比 TODO 注释更精确。
+
+### 3.6 B 模块完成情况（v2.0）
+
+| 模块 | 状态 | C 是否需要 |
+|------|------|-----------|
+| `ai/llm_client.py` | ✅ | 间接（B 模块内部依赖） |
+| `ai/chat_demo.py` | ✅ | 不必须（快速体验 LLM） |
+| `ai/insights.py` | ✅ | 可选（增强 API 返回值） |
+| `ai/nl2sql/schema_context.py` | ✅ | 不直接调 |
+| `ai/nl2sql/sql_generator.py` | ✅ | **必须**（chat.py 核心） |
+| `ai/nl2sql/result_explainer.py` | ✅ | **必须**（chat.py 核心） |
+| `ai/agent/tools.py` | ⬜ | 等 B（需 C 提供 API 地址） |
+| `ai/agent/analysis_agent.py` | ⬜ | 等 B |
+| `analysis/rfm_model.py` | ✅ | 导入数据（MySQL） |
+| `analysis/recommender.py` | ✅ | 导入数据（MySQL） |
+| `analysis/xgboost_model.py` | ✅ | 答辩 PPT 用，C 不需要 |
+
 ---
 
 ## 四、C 的下一步（依赖项）
@@ -118,5 +168,5 @@ IGNORE 1 ROWS;
 | 依赖 | 对方交付后 C 做什么 |
 |------|-------------------|
 | A | 确认表名/字段 → 改 `queries.py` 顶部常量 → `USE_REAL_DATA=true` 切真实数据 |
-| B | `ai/` 模块完成 → `chat.py` 接入 `generate_sql` / `result_explainer` / `run_agent` |
+| B | `ai/` 模块推送 → `chat.py` 按 3.5 节接入 `generate_sql` + `explain_result`；MySQL 导入 RFM/推荐 CSV |
 | D | 前端联调反馈 → C 修接口 bug |
