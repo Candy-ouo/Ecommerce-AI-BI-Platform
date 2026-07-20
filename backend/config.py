@@ -30,10 +30,11 @@ MYSQL_USER = os.getenv("MYSQL_USER", "root")
 MYSQL_PASSWORD = os.getenv("MYSQL_PASSWORD", "")
 MYSQL_DATABASE = os.getenv("MYSQL_DATABASE", "ecommerce_bi")
 
-# ── LLM（B 的模块读取，C 不直接调）──────────────────
-LLM_PROXY_BASE = os.getenv("LLM_PROXY_BASE", "")
-LLM_API_KEY = os.getenv("LLM_API_KEY", "")
-LLM_PROVIDER = os.getenv("LLM_PROVIDER", "deepseek")
+# ── LLM（命名对齐 B 的 ai_design.md：QWEN_API_KEY / QWEN_BASE_URL）──
+# B 的 llm_client.py 直接读这两个变量；C 的 chat.py 日后接入 B 模块时也复用。
+QWEN_API_KEY = os.getenv("QWEN_API_KEY", "")
+QWEN_BASE_URL = os.getenv("QWEN_BASE_URL", "")
+LLM_PROVIDER = os.getenv("LLM_PROVIDER", "qwen")
 
 # ── Flask 服务 ──────────────────────────────────────
 FLASK_HOST = os.getenv("FLASK_HOST", "0.0.0.0")
