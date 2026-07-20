@@ -15,7 +15,7 @@ def items():
         try:
             df = query(top_items_sql(limit, sort_by))
             items = [
-                {"name": str(r["item_id"]), "pv": int(r["pv"]), "fav": int(r["fav"])}
+                {"item_id": str(r["item_id"]), "pv": int(r["pv"]), "fav": int(r["fav"]), "buy": int(r["buy"])}
                 for r in df.to_dict("records")
             ]
             return jsonify({"items": items})
@@ -24,7 +24,7 @@ def items():
 
     mock = {
         "items": [
-            {"name": f"商品{i}", "pv": 9000 - i * 100, "fav": 3000 - i * 80}
+            {"item_id": f"item_{i}", "pv": 9000 - i * 100, "fav": 3000 - i * 80, "buy": 1500 - i * 50}
             for i in range(1, limit + 1)
         ]
     }

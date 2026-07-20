@@ -17,7 +17,7 @@ def recommend():
     # TODO(Day2): rows = get_recommend(user_id, limit)  → 转成 items
     mock = {
         "items": [
-            {"name": f"推荐{i}", "score": round(0.95 - i * 0.05, 2), "reason": "协同过滤"}
+            {"item_id": f"rec_item_{i}", "score": round(0.95 - i * 0.05, 2), "reason": "协同过滤"}
             for i in range(1, limit + 1)
         ]
     }
