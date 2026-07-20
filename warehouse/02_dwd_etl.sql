@@ -6,6 +6,12 @@
 
 USE ecommerce_bi;
 
+SET hive.exec.dynamic.partition.mode=nonstrict;
+SET mapreduce.map.memory.mb=1024;
+SET mapreduce.reduce.memory.mb=1024;
+SET mapreduce.map.java.opts=-Xmx800m;
+SET mapreduce.reduce.java.opts=-Xmx800m;
+
 -- ----------------------------
 -- 1. DWD 用户行为明细表
 --    ODS 用户行为 LEFT JOIN ODS 商品信息 → 补全商品 geohash
@@ -25,7 +31,7 @@ CREATE TABLE dwd_user_behavior (
 )
 COMMENT 'DWD 用户行为明细 — 两表Join + 去重 + 标准化'
 PARTITIONED BY (dt STRING COMMENT '分区日期 YYYY-MM-DD')
-STORED AS PARQUET;
+STORED AS ORC;
 
 INSERT OVERWRITE TABLE dwd_user_behavior PARTITION (dt)
 SELECT
@@ -76,7 +82,7 @@ CREATE TABLE dim_item (
     item_category  BIGINT   COMMENT '所属类目ID'
 )
 COMMENT 'DWD 商品维度表 — 商品↔类目映射'
-STORED AS PARQUET;
+STORED AS ORC;
 
 INSERT OVERWRITE TABLE dim_item
 SELECT
@@ -96,7 +102,7 @@ CREATE TABLE dim_category (
     activity_label  STRING   COMMENT '活跃度标签：高活跃/中活跃/低活跃'
 )
 COMMENT 'DWD 类目维度表 — 去重类目 + 活跃度标签'
-STORED AS PARQUET;
+STORED AS ORC;
 
 INSERT OVERWRITE TABLE dim_category
 SELECT

@@ -6,6 +6,12 @@
 
 USE ecommerce_bi;
 
+SET hive.exec.dynamic.partition.mode=nonstrict;
+SET mapreduce.map.memory.mb=1024;
+SET mapreduce.reduce.memory.mb=1024;
+SET mapreduce.map.java.opts=-Xmx800m;
+SET mapreduce.reduce.java.opts=-Xmx800m;
+
 -- ----------------------------
 -- 1. 用户日行为汇总表 dws_user_day
 --    每个用户每天的行为次数统计 + 活跃小时分布
@@ -22,7 +28,7 @@ CREATE TABLE dws_user_day (
 )
 COMMENT 'DWS 用户日粒度行为汇总'
 PARTITIONED BY (dt STRING COMMENT '分区日期 YYYY-MM-DD')
-STORED AS PARQUET;
+STORED AS ORC;
 
 INSERT OVERWRITE TABLE dws_user_day PARTITION (dt)
 SELECT
@@ -53,7 +59,7 @@ CREATE TABLE dws_item_day (
 )
 COMMENT 'DWS 商品日粒度指标'
 PARTITIONED BY (dt STRING COMMENT '分区日期 YYYY-MM-DD')
-STORED AS PARQUET;
+STORED AS ORC;
 
 INSERT OVERWRITE TABLE dws_item_day PARTITION (dt)
 SELECT
@@ -90,7 +96,7 @@ CREATE TABLE dws_category_day (
 )
 COMMENT 'DWS 类目日粒度指标'
 PARTITIONED BY (dt STRING COMMENT '分区日期 YYYY-MM-DD')
-STORED AS PARQUET;
+STORED AS ORC;
 
 INSERT OVERWRITE TABLE dws_category_day PARTITION (dt)
 SELECT
@@ -127,7 +133,7 @@ CREATE TABLE dws_platform_day (
 )
 COMMENT 'DWS 全站日粒度汇总指标'
 PARTITIONED BY (dt STRING COMMENT '分区日期 YYYY-MM-DD')
-STORED AS PARQUET;
+STORED AS ORC;
 
 INSERT OVERWRITE TABLE dws_platform_day PARTITION (dt)
 SELECT

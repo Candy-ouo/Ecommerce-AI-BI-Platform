@@ -39,7 +39,7 @@ TBLPROPERTIES ('skip.header.line.count'='1');
 
 -- 加载数据（按日期分区逐天加载，示例加载全量到 2014-12-18 分区）
 -- 实际执行时根据 E 产出的 CSV 路径调整
-LOAD DATA LOCAL INPATH 'data/processed/user_behavior_clean.csv'
+LOAD DATA INPATH '/user/data/user_behavior_clean.csv'
 OVERWRITE INTO TABLE ods_user_behavior
 PARTITION (dt='2014-12-18');
 
@@ -61,7 +61,7 @@ STORED AS TEXTFILE
 TBLPROPERTIES ('skip.header.line.count'='1');
 
 -- 加载数据
-LOAD DATA LOCAL INPATH 'data/processed/item_info_clean.csv'
+LOAD DATA INPATH '/user/data/item_info_clean.csv'
 OVERWRITE INTO TABLE ods_item_info;
 
 -- ----------------------------

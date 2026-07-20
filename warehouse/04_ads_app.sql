@@ -7,6 +7,12 @@
 
 USE ecommerce_bi;
 
+SET hive.exec.dynamic.partition.mode=nonstrict;
+SET mapreduce.map.memory.mb=1024;
+SET mapreduce.reduce.memory.mb=1024;
+SET mapreduce.map.java.opts=-Xmx800m;
+SET mapreduce.reduce.java.opts=-Xmx800m;
+
 -- ----------------------------
 -- 1. 每日 KPI 汇总表 ads_daily_kpi
 --    面向大屏 KPI 指标卡（F3.1）
@@ -27,7 +33,7 @@ CREATE TABLE ads_daily_kpi (
 )
 COMMENT 'ADS 每日 KPI 汇总 — 供大屏 KPI 卡片直接查询'
 PARTITIONED BY (dt STRING COMMENT '分区日期 YYYY-MM-DD')
-STORED AS PARQUET;
+STORED AS ORC;
 
 INSERT OVERWRITE TABLE ads_daily_kpi PARTITION (dt)
 SELECT
@@ -69,7 +75,7 @@ CREATE TABLE ads_funnel (
 )
 COMMENT 'ADS 转化漏斗 — 全站+各类目漏斗各环节人数与转化率'
 PARTITIONED BY (dt STRING COMMENT '分区日期 YYYY-MM-DD')
-STORED AS PARQUET;
+STORED AS ORC;
 
 INSERT OVERWRITE TABLE ads_funnel PARTITION (dt)
 -- 全站漏斗
@@ -133,7 +139,7 @@ CREATE TABLE ads_category_topn (
 )
 COMMENT 'ADS 类目 TopN 排行 — 供柱状图直接查询'
 PARTITIONED BY (dt STRING COMMENT '分区日期 YYYY-MM-DD')
-STORED AS PARQUET;
+STORED AS ORC;
 
 INSERT OVERWRITE TABLE ads_category_topn PARTITION (dt)
 SELECT
@@ -169,40 +175,9 @@ CREATE TABLE ads_user_rfm (
 )
 COMMENT 'ADS 用户 RFM 分层 — 供饼图直接查询'
 PARTITIONED BY (dt STRING COMMENT '分区日期 YYYY-MM-DD（统计截止日）')
-STORED AS PARQUET;
+STORED AS ORC;
 
 INSERT OVERWRITE TABLE ads_user_rfm PARTITION (dt)
-WITH rfm_raw AS (
-    SELECT
-        user_id,
-        -- R: 距数据最后一天 (2014-12-18) 的天数
-        DATEDIFF('2014-12-18', MAX(behavior_date))          AS r_value,
-        -- F: 统计周期内购买次数
-        SUM(CASE WHEN behavior_type = 4 THEN 1 ELSE 0 END)  AS f_value,
-        -- M: 购买涉及的去重商品数
-        COUNT(DISTINCT CASE WHEN behavior_type = 4 THEN item_id END) AS m_value
-    FROM dwd_user_behavior
-    WHERE behavior_date IS NOT NULL
-    GROUP BY user_id
-),
-rfm_scored AS (
-    SELECT
-        user_id,
-        r_value,
-        f_value,
-        m_value,
-        -- R: 越小越好 → NTILE(3) 倒序（值小=分高）
-        CASE
-            WHEN r_value <= 1 THEN 3
-            WHEN r_value <= 3 THEN 2
-            ELSE 1
-        END AS r_score,
-        -- F: 越大越好
-        NTILE(3) OVER (ORDER BY f_value)  AS f_score,
-        -- M: 越大越好
-        NTILE(3) OVER (ORDER BY m_value)  AS m_score
-    FROM rfm_raw
-)
 SELECT
     user_id,
     r_value,
@@ -224,7 +199,26 @@ SELECT
         ELSE '未知'
     END AS rfm_label_cn,
     '2014-12-18' AS dt
-FROM rfm_scored;
+FROM (
+    SELECT
+        user_id,
+        r_value,
+        f_value,
+        m_value,
+        CASE WHEN r_value <= 1 THEN 3 WHEN r_value <= 3 THEN 2 ELSE 1 END AS r_score,
+        NTILE(3) OVER (ORDER BY f_value) AS f_score,
+        NTILE(3) OVER (ORDER BY m_value) AS m_score
+    FROM (
+        SELECT
+            user_id,
+            DATEDIFF('2014-12-18', MAX(behavior_date)) AS r_value,
+            SUM(CASE WHEN behavior_type = 4 THEN 1 ELSE 0 END) AS f_value,
+            COUNT(DISTINCT CASE WHEN behavior_type = 4 THEN item_id END) AS m_value
+        FROM dwd_user_behavior
+        WHERE behavior_date IS NOT NULL
+        GROUP BY user_id
+    ) rfm_raw
+) rfm_scored;
 
 -- ----------------------------
 -- 5. 验证
