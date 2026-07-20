@@ -1,0 +1,32 @@
+# ===== 数据集（不提交） =====
+data/raw/
+data/*.csv
+!data/sample/sample_10k.csv
+
+# ===== 环境变量（含敏感信息） =====
+.env
+
+# ===== Python =====
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+.venv/
+venv/
+
+# ===== Jupyter =====
+.ipynb_checkpoints/
+
+# ===== IDE =====
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# ===== OS =====
+.DS_Store
+Thumbs.db
+
+# ===== 运行时产物 =====
+*.log
+data/processed/
