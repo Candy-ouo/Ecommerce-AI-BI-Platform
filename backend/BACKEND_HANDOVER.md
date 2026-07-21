@@ -99,10 +99,11 @@ B 的 `rfm_model.py` 产出 8 类标签（与 C 当前 Mock 命名不同），C 
 > B 的 `rfm_result.csv` 字段：`user_id, R, F, M, R_score, F_score, M_score, rfm_label`
 > C 导入 MySQL 的 `rfm_result` 表后，接口读取 `rfm_label` 作 labels、`COUNT(*)` 作 counts。
 
-### 3.2 推荐结果结构（接真实数据时返回 item_id + score）
+### 3.2 推荐结果结构（接真实数据时返回 item_id + score + reason）
 
-B 的 `recommender.py` 产出 `recommend_result.csv` 字段：`user_id, item_id, score`（**无 reason 列**）。
-C 的 `GET /api/recommend` 已对齐 B 的实际字段，该接口 now returns only `item_id` and `score`。
+B 的 `recommender.py`（按 ai_design.md v2.x）产出推荐结果字段：`user_id, item_id, score, reason`。
+`reason` 为 LLM 生成的推荐理由（按 DEV_PLAN 需求）。
+C 的 `GET /api/recommend` 已对齐，返回 `[{item_id, score, reason}]`。
 
 ### 3.3 数据导入 MySQL 参考（B 提供）
 

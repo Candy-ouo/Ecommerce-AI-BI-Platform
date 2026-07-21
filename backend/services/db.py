@@ -15,24 +15,43 @@ def get_connection():
 
 
 def get_rfm():
-    """读 RFM 8 类用户占比（供 /api/rfm/dist）。"""
+    """读 RFM 8 类用户占比（供 /api/rfm/dist）。
+
+    对齐 B 的 rfm_model.py 产出列：rfm_result 表含 rfm_label 列，
+    每行一个用户，需要按标签聚合 COUNT。
+    """
     # TODO(Day2): 接 A 的 ADS 层 rfm 结果表
     with get_connection() as conn:
         with conn.cursor() as cur:
-            cur.execute("SELECT label, cnt FROM rfm_result")
+            cur.execute(
+                "SELECT rfm_label AS label, COUNT(*) AS cnt "
+                "FROM rfm_result GROUP BY rfm_label"
+            )
             return cur.fetchall()
 
 
 def get_recommend(user_id: int, limit: int = 10):
-    """读某用户的推荐列表（供 /api/recommend）。"""
+    """读某用户的推荐列表（供 /api/recommend）。
+
+    对齐 B 的 recommender.py 产出（按 ai_design.md 含 reason 列）。
+    若 B 的 recommend_result 表尚未包含 reason 列，自动降级只查 item_id/score。
+    """
     # TODO(Day2): 接 B 的 recommender 产出表
     with get_connection() as conn:
         with conn.cursor() as cur:
-            cur.execute(
-                "SELECT item_id, score FROM recommend_result "
-                "WHERE user_id=%s ORDER BY score DESC LIMIT %s",
-                (user_id, limit),
-            )
+            try:
+                cur.execute(
+                    "SELECT item_id, score, reason FROM recommend_result "
+                    "WHERE user_id=%s ORDER BY score DESC LIMIT %s",
+                    (user_id, limit),
+                )
+            except Exception:
+                # reason 列尚未建好时降级
+                cur.execute(
+                    "SELECT item_id, score FROM recommend_result "
+                    "WHERE user_id=%s ORDER BY score DESC LIMIT %s",
+                    (user_id, limit),
+                )
             return cur.fetchall()
 
 
