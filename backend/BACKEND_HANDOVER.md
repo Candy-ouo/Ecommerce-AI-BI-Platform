@@ -2,7 +2,7 @@
 
 负责人：C
 分支：`feature/c-backend`
-最后更新：2026-07-21（响应格式对齐 D 前端 {code,message,data} 包装 + SSE chart 格式修复）
+最后更新：2026-07-21（P2：API鉴权 + chat多轮对话 + 钉钉推送 + SSE晨报流）
 
 ---
 
@@ -51,6 +51,7 @@ backend/
 ### 2.2 给 B（AI）
 
 > 接口端点清单在 `backend/API.md` 末尾（`tools.py` 调用示例已写好）。
+> **2026-07-21 更新**：C 已为 B 的 `ai/agent/tools.py` 做好适配 — `_get()` 自动解包 `{code,message,data}` 包装层，Agent 拿到的就是纯业务字段（跟 tools.py 的 docstring 一致）。
 > 模型名用 `qwen-plus`（已实测可通）。LLM 配置**统一用 B 的变量名**（B 说了算），在本地 `.env` 里填：
 
 ```env
@@ -117,7 +118,7 @@ FIELDS TERMINATED BY ',' ENCLOSED BY '"'
 IGNORE 1 ROWS;
 ```
 
-### 3.4 `ai/insights.py`（新完成，可选接入）
+### 3.4 `ai/insights.py`（✅ 已接入 kpi/cards）
 
 B 新增了 AI 数据洞察模块：输入 KPI 字典 → LLM 生成三段式中文分析报告（核心指标概览 + 趋势异常 + 运营建议）。
 
@@ -127,7 +128,8 @@ kpi = {"dau": 8230, "total_orders": 3900, "buy_conversion": 0.377}
 report = generate_insights(kpi)  # → 约 200-300 字中文分析
 ```
 
-> C 可在 `/api/kpi/cards` 或 `/api/trend/active` 返回时附带 AI 分析文本，增强前端可读性。非必须。
+> C 已在 `/api/kpi/cards` 接入（惰性导入，字段名映射：`orders→total_orders`、`conversion_rate→buy_conversion`）。
+> 无 LLM key 时静默跳过，不影响 KPI 正常返回。返回字段：`data.ai_insight`。
 
 ### 3.5 `chat.py` 集成参考（B 第 4 节提供）
 
@@ -157,12 +159,12 @@ answer = explain_result(user_question, result["sql"], df)
 |------|------|-----------|
 | `ai/llm_client.py` | ✅ | 间接（B 模块内部依赖） |
 | `ai/chat_demo.py` | ✅ | 不必须（快速体验 LLM） |
-| `ai/insights.py` | ✅ | 可选（增强 API 返回值） |
+| `ai/insights.py` | ✅ 已接入 | kpi/cards 惰性导入（无 LLM key 静默跳过） |
 | `ai/nl2sql/schema_context.py` | ✅ | 不直接调 |
 | `ai/nl2sql/sql_generator.py` | ✅ | **必须**（chat.py 核心） |
 | `ai/nl2sql/result_explainer.py` | ✅ | **必须**（chat.py 核心） |
-| `ai/agent/tools.py` | ⬜ | 等 B（需 C 提供 API 地址） |
-| `ai/agent/analysis_agent.py` | ⬜ | 等 B |
+| `ai/agent/tools.py` | ✅ 已适配 | `_get()` 自动解包 C 的 `{code,message,data}`，Agent 直接拿业务字段 |
+| `ai/agent/analysis_agent.py` | ✅ | B 已完成（C 无需改，依赖 tools.py 返回） |
 | `analysis/rfm_model.py` | ✅ | 导入数据（MySQL） |
 | `analysis/recommender.py` | ✅ | 导入数据（MySQL） |
 | `analysis/xgboost_model.py` | ✅ | 答辩 PPT 用，C 不需要 |
@@ -173,6 +175,6 @@ answer = explain_result(user_question, result["sql"], df)
 
 | 依赖 | 对方交付后 C 做什么 |
 |------|-------------------|
-| A | 确认表名/字段 → `queries.py` 常量已对齐 `04_ads_app.sql`，待切 `USE_REAL_DATA=true` |
+| A | ✅ `queries.py` 常量已核对 `Docs/schema.md`，20 个字段全部一致；待 A 在 Hive 建表后可切 `USE_REAL_DATA=true` |
 | B | `ai/morning_report.py` 已接入 `scheduler.py`（每日8:00生成并落库）；`ai/` NL2SQL 模块已通过 `chat.py` 惰性导入生效 |
 | D | 前端联调反馈 → C 修接口 bug |

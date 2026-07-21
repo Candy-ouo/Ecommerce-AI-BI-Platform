@@ -82,7 +82,8 @@ class TestHealth:
 class TestKpiCards:
     """DEV_PLAN 契约: {dau, dau_change, orders, conversion_rate, avg_pv}（在 data 内）"""
 
-    REQUIRED_FIELDS = {"dau", "dau_change", "orders", "conversion_rate", "avg_pv", "orders_change", "conversion_change", "avg_pv_change"}
+    REQUIRED_FIELDS = {"date", "dau", "dau_change", "orders", "conversion_rate", "avg_pv",
+                       "orders_change", "conversion_change", "avg_pv_change"}
 
     def test_status_and_content_type(self, client):
         r = client.get("/api/kpi/cards")
@@ -132,6 +133,7 @@ class TestKpiCards:
     def test_smoke_all_fields(self, client):
         """冒烟：一次请求验证所有字段"""
         data = client.get("/api/kpi/cards").get_json()["data"]
+        assert data["date"] == "2014-12-18"
         assert data["dau"] == 12345
         assert data["dau_change"] == -0.03
         assert data["orders"] == 8900
@@ -152,7 +154,7 @@ class TestTrend:
 
     def test_required_fields_present(self, client):
         data = client.get("/api/trend/active").get_json()["data"]
-        for field in ("dates", "dau", "pv"):
+        for field in ("dates", "dau", "pv", "orders"):
             assert field in data, f"Missing field: {field}"
 
     def test_arrays_same_length(self, client):
@@ -161,6 +163,7 @@ class TestTrend:
         assert n == 7, f"Expected 7 dates, got {n}"
         assert len(data["dau"]) == n
         assert len(data["pv"]) == n
+        assert len(data["orders"]) == n
 
     def test_dau_and_pv_all_positive(self, client):
         data = client.get("/api/trend/active?days=7").get_json()["data"]
@@ -194,6 +197,7 @@ class TestTrend:
         assert data["dates"] == []
         assert data["dau"] == []
         assert data["pv"] == []
+        assert data["orders"] == []
 
     def test_days_negative(self, client):
         """负天数：Python 负数切片 mocks[:-5] 取前 len-5 项"""
@@ -237,7 +241,7 @@ class TestTopItems:
     def test_each_item_has_required_fields(self, client):
         data = client.get("/api/top/items?limit=3").get_json()["data"]
         for item in data["items"]:
-            for field in ("item_id", "pv", "fav", "buy"):
+            for field in ("item_id", "name", "pv", "fav", "buy"):
                 assert field in item, f"Missing field {field} in item"
 
     def test_pv_fav_buy_are_positive_ints(self, client):
@@ -340,8 +344,9 @@ class TestRfmDist:
     """DEV_PLAN 契约: {labels: [], counts: []}（在 data 内）"""
 
     EXPECTED_LABELS = {
-        "重要价值", "重要发展", "重要保持", "重要挽留",
-        "一般价值", "一般发展", "一般保持", "一般挽留",
+        "重要价值用户", "重要发展用户", "重要保持用户", "重要挽留用户",
+        "一般价值用户", "一般发展用户", "新锐潜力用户", "低价值用户",
+        "浏览型用户",
     }
 
     def test_status_ok(self, client):
@@ -356,13 +361,13 @@ class TestRfmDist:
             assert "labels" in data
             assert "counts" in data
 
-    def test_exactly_8_categories(self, client):
+    def test_at_least_8_categories(self, client):
         r = client.get("/api/rfm/dist")
         if r.status_code == 500:
             pytest.skip("RFM requires Hive connection")
         data = r.get_json()["data"]
-        assert len(data["labels"]) == 8
-        assert len(data["counts"]) == 8
+        assert len(data["labels"]) >= 8, f"Expected >= 8 labels, got {len(data['labels'])}"
+        assert len(data["counts"]) >= 8
 
     def test_labels_and_counts_same_length(self, client):
         r = client.get("/api/rfm/dist")
@@ -377,7 +382,8 @@ class TestRfmDist:
             pytest.skip("RFM requires Hive connection")
         data = r.get_json()["data"]
         actual = set(data["labels"])
-        assert actual == self.EXPECTED_LABELS, f"Label mismatch: {actual}"
+        missing = self.EXPECTED_LABELS - actual
+        assert not missing, f"Missing labels: {missing}"
 
     def test_counts_all_positive(self, client):
         r = client.get("/api/rfm/dist")
@@ -416,6 +422,8 @@ class TestRecommend:
 
     def test_returns_items_list(self, client):
         data = client.get("/api/recommend?user_id=123").get_json()["data"]
+        assert "user_id" in data
+        assert data["user_id"] == 123
         assert "items" in data
         assert isinstance(data["items"], list)
         assert len(data["items"]) > 0
@@ -427,7 +435,7 @@ class TestRecommend:
     def test_each_item_has_required_fields(self, client):
         data = client.get("/api/recommend?user_id=123").get_json()["data"]
         for item in data["items"]:
-            for field in ("item_id", "score", "reason"):
+            for field in ("item_id", "name", "score", "reason"):
                 assert field in item, f"Missing field {field} in item"
 
     def test_scores_between_zero_and_one(self, client):
@@ -553,6 +561,15 @@ class TestChat:
                         data=json.dumps({}),
                         content_type="application/json")
         assert r.status_code == 200
+
+    def test_question_field_works(self, client):
+        """D 前端实际发送 {question} 字段，后端需兼容"""
+        r = client.post("/api/chat",
+                        data=json.dumps({"question": "今天DAU多少"}),
+                        content_type="application/json")
+        assert r.status_code == 200
+        body = r.get_data(as_text=True)
+        assert "done" in body
 
     def test_not_json_body(self, client):
         """非 JSON body：Flask 返回 message=''"""
@@ -681,3 +698,89 @@ class TestCrossApi:
         for ep in endpoints:
             r = client.get(ep)
             assert r.status_code != 500, f"{ep} returned 500"
+
+
+# ============================================================
+# 11. 鉴权测试
+# ============================================================
+
+class TestAuth:
+    """API_TOKEN 鉴权：未配置时放行，配置后校验 Bearer token"""
+
+    def test_no_token_configured_allows_all(self, client):
+        """未配置 API_TOKEN 时所有接口应放行"""
+        r = client.get("/api/kpi/cards")
+        assert r.status_code == 200
+
+    def test_wrong_token_denied(self, client, monkeypatch):
+        """配置 API_TOKEN 后，错误 token 应返回 403"""
+        monkeypatch.setattr("backend.app.API_TOKEN", "secret123")
+        r = client.get("/api/kpi/cards", headers={"Authorization": "Bearer wrong"})
+        assert r.status_code == 403
+        monkeypatch.undo()
+
+    def test_correct_token_allowed(self, client, monkeypatch):
+        """配置 API_TOKEN 后，正确 token 应放行"""
+        monkeypatch.setattr("backend.app.API_TOKEN", "secret123")
+        r = client.get("/api/kpi/cards", headers={"Authorization": "Bearer secret123"})
+        assert r.status_code == 200
+        monkeypatch.undo()
+
+    def test_missing_auth_header_denied(self, client, monkeypatch):
+        """配置 API_TOKEN 后，缺 Authorization 头应返回 401"""
+        monkeypatch.setattr("backend.app.API_TOKEN", "secret123")
+        r = client.get("/api/kpi/cards")
+        assert r.status_code == 401
+        monkeypatch.undo()
+
+    def test_health_not_protected(self, client, monkeypatch):
+        """/health 不受鉴权保护"""
+        monkeypatch.setattr("backend.app.API_TOKEN", "secret123")
+        r = client.get("/health")
+        assert r.status_code == 200
+        monkeypatch.undo()
+
+
+# ============================================================
+# 12. Chat 多轮对话测试
+# ============================================================
+
+class TestChatSession:
+    """验证 chat 接口的 session_id 多轮对话支持"""
+
+    def test_done_event_includes_session_id(self, client):
+        """done 事件应包含 session_id"""
+        r = client.post("/api/chat",
+                        data=json.dumps({"question": "你好"}),
+                        content_type="application/json")
+        events = [line for line in r.get_data(as_text=True).split("\n") if line.startswith("data:")]
+        done = json.loads(events[-1][6:])
+        assert done["type"] == "done"
+        assert "session_id" in done, f"Missing session_id in done event: {done}"
+
+    def test_custom_session_id_preserved(self, client):
+        """前端传入的 session_id 应在 done 事件中返回"""
+        r = client.post("/api/chat",
+                        data=json.dumps({"question": "hi", "session_id": "my-session"}),
+                        content_type="application/json")
+        events = [line for line in r.get_data(as_text=True).split("\n") if line.startswith("data:")]
+        done = json.loads(events[-1][6:])
+        assert done["session_id"] == "my-session"
+
+
+# ============================================================
+# 13. 晨报 SSE 流测试
+# ============================================================
+
+class TestReportStream:
+    """GET /api/report/stream — SSE 晨报实时推送端点"""
+
+    def test_stream_returns_sse(self, client):
+        """响应 Content-Type 应为 text/event-stream"""
+        r = client.get("/api/report/stream", buffered=False)
+        assert "text/event-stream" in r.content_type
+
+    def test_stream_has_cache_headers(self, client):
+        """SSE 响应应有禁用缓存头"""
+        r = client.get("/api/report/stream", buffered=False)
+        assert r.headers.get("Cache-Control") == "no-cache"

@@ -21,20 +21,21 @@ def recommend():
         try:
             rows = get_recommend(user_id, limit)
             items = [
-                {"item_id": str(r["item_id"]), "score": round(float(r["score"]), 4),
-                 "reason": r.get("reason", "")}
+                {"item_id": str(r["item_id"]), "name": f"商品 {r['item_id']}",
+                 "score": round(float(r["score"]), 4), "reason": r.get("reason", "")}
                 for r in rows
             ]
-            return ok({"items": items})
+            return ok({"user_id": user_id, "items": items})
         except Exception as e:
             return fail(str(e))
 
     items = [
         {
             "item_id": str(232431562 + i * 10000000),
+            "name": f"商品 {232431562 + i * 10000000}",
             "score": round(0.95 * (1 - (i - 1) / max(limit, 1)), 2),
             "reason": "协同过滤 + 兴趣相似度",
         }
         for i in range(1, limit + 1)
     ]
-    return ok({"items": items})
+    return ok({"user_id": user_id, "items": items})

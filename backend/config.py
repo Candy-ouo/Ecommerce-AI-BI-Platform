@@ -46,3 +46,10 @@ FLASK_DEBUG = os.getenv("FLASK_DEBUG", "true").lower() == "true"
 # Day1: False（接口返回 Mock，保证 Demo 可跑、不依赖 A 的表）
 # Day2: A 把聚合表在 Hive 建好 + SCHEMA_CHECKLIST 确认后，改 True 切真 SQL
 USE_REAL_DATA = os.getenv("USE_REAL_DATA", "false").lower() == "true"
+
+# ── API 鉴权（Bearer Token）─────────────────────────
+# 空字符串 → 鉴权关闭；设置后所有 API 需 Authorization: Bearer <token>
+API_TOKEN = os.getenv("API_TOKEN", "")
+
+# ── 晨报推送（钉钉机器人 Webhook）───────────────────
+DINGTALK_WEBHOOK = os.getenv("DINGTALK_WEBHOOK", "")
