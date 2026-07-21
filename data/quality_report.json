@@ -1,0 +1,103 @@
+{
+  "quality_check_time": "2026-07-21 11:02:28",
+  "overall_status": "PASS",
+  "item_table": {
+    "table": "item_info",
+    "total_rows": 480723,
+    "unique_item_ids": 310582,
+    "duplicate_rows": 170141,
+    "duplicate_rate": 0.3539,
+    "null_rate": {
+      "item_geohash": 0.6388,
+      "item_category": 0.0
+    },
+    "category_count": 991,
+    "status": "pass"
+  },
+  "user_behavior_table": {
+    "table": "user_behavior",
+    "total_rows": 10000,
+    "unique_users": 4747,
+    "unique_items": 9918,
+    "unique_categories": 1822,
+    "duplicate_rows": "N/A (小文件未检测)",
+    "null_rate": {
+      "user_geohash": 0.6828,
+      "item_category": 0.0
+    },
+    "invalid_rows": {
+      "behavior_type": 0,
+      "time_parse_fail": 0,
+      "date_out_of_range": 290
+    },
+    "behavior_distribution": {
+      "type_1": {
+        "name": "浏览",
+        "count": 9411,
+        "actual_pct": 0.9411,
+        "expected_pct": 0.942,
+        "deviation": -0.0009
+      },
+      "type_2": {
+        "name": "收藏",
+        "count": 197,
+        "actual_pct": 0.0197,
+        "expected_pct": 0.02,
+        "deviation": -0.0003
+      },
+      "type_3": {
+        "name": "加购",
+        "count": 296,
+        "actual_pct": 0.0296,
+        "expected_pct": 0.028,
+        "deviation": 0.0016
+      },
+      "type_4": {
+        "name": "购买",
+        "count": 96,
+        "actual_pct": 0.0096,
+        "expected_pct": 0.01,
+        "deviation": -0.0004
+      }
+    },
+    "date_coverage": {
+      "days_covered": 31,
+      "days_expected": 31,
+      "days_missing": 0,
+      "first_date": "2014-11-18",
+      "last_date": "2014-12-18",
+      "missing_dates": []
+    },
+    "elapsed_seconds": 0.0,
+    "issues": [],
+    "status": "pass"
+  },
+  "cross_table_check": {
+    "item_id_comparison": {
+      "user_table_unique": 9918,
+      "item_table_unique": 310582,
+      "overlap_count": 1152,
+      "overlap_rate": 0.1162,
+      "user_only": 8766
+    },
+    "category_comparison": {
+      "user_table_categories": 1822,
+      "item_table_categories": 991,
+      "overlap_count": 249,
+      "overlap_rate": 0.1367,
+      "categories_in_user_only": 1573,
+      "categories_in_item_only": 742
+    },
+    "status": "pass"
+  },
+  "summary": {
+    "total_issues": 0,
+    "remarks": [
+      "user_geohash 空值率 68%，符合数据集特点（约68%为空）",
+      "item_geohash 空值率 64%，符合数据集特点（约64%为空）",
+      "商品表去重: 480,723 → 310,582 商品",
+      "行为表类目数远大于商品表（行为表8,916个 vs 商品表991个），以行为表为准",
+      "日期覆盖完整（31天）"
+    ]
+  }
+}
