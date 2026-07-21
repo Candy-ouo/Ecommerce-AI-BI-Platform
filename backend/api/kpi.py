@@ -1,5 +1,6 @@
-from flask import Blueprint, jsonify
+from flask import Blueprint
 
+from api._response import ok, fail
 from config import USE_REAL_DATA
 from services.hive_client import query
 from services.queries import (
@@ -15,7 +16,7 @@ def cards():
         try:
             rows = query(kpi_cards_sql()).to_dict("records")
             if not rows:
-                return jsonify({"error": "no data"}), 404
+                return fail("no data", 404)
             today = rows[0]
             prev = rows[1] if len(rows) > 1 else None
 
@@ -24,7 +25,7 @@ def cards():
                 (today[F_DAU] - prev[F_DAU]) / prev[F_DAU]
                 if prev and prev[F_DAU] else 0.0
             )
-            return jsonify({
+            return ok({
                 "dau": dau,
                 "dau_change": round(float(dau_change), 4),
                 "orders": int(today[F_TOTAL_ORDERS]),
@@ -32,14 +33,16 @@ def cards():
                 "avg_pv": round(float(today[F_AVG_PV]), 2),
             })
         except Exception as e:
-            return jsonify({"error": str(e)}), 500
+            return fail(str(e))
 
-    # Mock 兜底（USE_REAL_DATA=false；字段对齐需求文档：dau/orders/conversion_rate/avg_pv）
-    mock = {
+    # Mock：字段对齐 D 前端 api.js mockData.kpi
+    return ok({
         "dau": 12345,
         "dau_change": -0.03,
         "orders": 8900,
-        "conversion_rate": 0.12,
+        "orders_change": 0.061,
+        "conversion_rate": 0.0382,
+        "conversion_change": 0.005,
         "avg_pv": 8.5,
-    }
-    return jsonify(mock)
+        "avg_pv_change": 0.024,
+    })

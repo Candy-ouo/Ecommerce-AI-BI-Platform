@@ -3,8 +3,9 @@
 跟 KPI/趋势/漏斗接口统一，直读 A 的 Hive ads_user_rfm 表。
 B→MySQL→C 的绕路已去掉，A 的 Hive 表用 NTILE(3) 打好了 9 类标签。
 """
-from flask import Blueprint, jsonify
+from flask import Blueprint
 
+from api._response import ok, fail
 from services.hive_client import query
 
 bp = Blueprint("rfm", __name__, url_prefix="/api/rfm")
@@ -20,9 +21,9 @@ def dist():
             GROUP BY rfm_label_cn
             ORDER BY cnt DESC
         """)
-        return jsonify({
+        return ok({
             "labels": df.iloc[:, 0].tolist(),
             "counts": df.iloc[:, 1].astype(int).tolist(),
         })
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        return fail(str(e))

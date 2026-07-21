@@ -2,7 +2,7 @@
 
 负责人：C
 分支：`feature/c-backend`
-最后更新：2026-07-21（新增 report 接口、scheduler、rfm/recommend 双模式）
+最后更新：2026-07-21（响应格式对齐 D 前端 {code,message,data} 包装 + SSE chart 格式修复）
 
 ---
 
@@ -15,6 +15,7 @@ backend/
 ├── scheduler.py           ← APScheduler 定时任务（每天 8:00 触发晨报生成）
 ├── api/
 │   ├── __init__.py        ← Blueprint 注册（8 个模块）
+│   ├── _response.py        ← 统一响应包装 {code, message, data}（对齐 D 前端 api.js）
 │   ├── kpi.py             ← GET  /api/kpi/cards
 │   ├── trend.py           ← GET  /api/trend/active
 │   ├── top.py             ← GET  /api/top/items
@@ -31,7 +32,7 @@ backend/
 └── .env.example           ← 环境变量模板（占位符，不含真实 key）
 ```
 
-当前状态：9 个接口 + 1 个健康检查全部跑通（Mock 模式），前端可联调；`chat.py` 惰性导入 B 模块，失败自动降级 Mock；rfm/recommend 已接 MySQL 真实数据链路。
+当前状态：9 个接口 + 1 个健康检查全部跑通（Mock 模式），82 测试全过。响应格式已统一为 `{code, message, data}` 包装（对齐 D 前端 `api.js`）。SSE chart 事件格式对齐 D 的 `ai_chat.js`（`{chartType, data: {categories, values}}`）。Mock chat 不再含 chart 事件（D 前端自行生成）。
 
 ---
 
@@ -39,9 +40,11 @@ backend/
 
 ### 2.1 给 D（前端）
 
-> C 的后端 9 个接口已全部跑通（Mock 模式）。文档在 `backend/API.md`。
+> C 的后端 9 个接口已全部跑通（Mock 模式+82测试全过）。文档在 `backend/API.md`。
+> **响应格式已统一**：所有 REST 接口返回 `{"code": 0, "message": "success", "data": {...}}`，对齐你 `frontend/js/api.js` 的 `request()` 逻辑。
+> **SSE chart 格式**：`{"type":"chart","chartType":"bar","data":{"categories":["A","B"],"values":[1,2]}}`，对齐你 `ai_chat.js` 的 `buildChartOption()`。
+> Mock 模式下 chat 不再发 chart 事件（你前端 `mockSend` 自己生成）。
 > 本地启动：`cd backend && pip install -r requirements.txt && python app.py`，然后访问 `http://localhost:5000/api/kpi/cards` 等即可联调。
-> 接口形状已锁定，按文档对接就行，**尽量不改字段名**。
 
 ---
 

@@ -2,9 +2,10 @@
 
 运行：在 backend/ 目录下 `python app.py`
 """
-from flask import Flask, jsonify
+from flask import Flask
 from flask_cors import CORS
 
+from api._response import ok
 from config import FLASK_HOST, FLASK_PORT, FLASK_DEBUG
 from api import register_blueprints
 from scheduler import start_scheduler
@@ -17,7 +18,7 @@ register_blueprints(app)
 
 @app.route("/health")
 def health():
-    return jsonify({"status": "ok"})
+    return ok({"status": "ok"})
 
 
 if __name__ == "__main__":

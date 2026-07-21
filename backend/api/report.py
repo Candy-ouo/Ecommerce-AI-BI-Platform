@@ -3,8 +3,9 @@
 Real 模式：读 MySQL 中 B 的 morning_report.py 产出的晨报表。
 USE_REAL_DATA=false 或不具备连接时返回 Mock。
 """
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, request
 
+from api._response import ok, fail
 from config import USE_REAL_DATA
 from services.db import get_report_latest, get_report_history
 
@@ -17,16 +18,16 @@ def latest():
         try:
             row = get_report_latest()
             if row is None:
-                return jsonify({"error": "no report yet"}), 404
-            return jsonify({
+                return fail("no report yet", 404)
+            return ok({
                 "date": str(row["report_date"]),
                 "content": row["content"],
                 "anomalies": _parse_anomalies(row.get("anomalies")),
             })
         except Exception as e:
-            return jsonify({"error": str(e)}), 500
+            return fail(str(e))
 
-    mock = {
+    return ok({
         "date": "2014-12-18",
         "content": (
             "今日 DAU 12,345（环比 +3.2%），总订单 8,900 单。"
@@ -35,8 +36,7 @@ def latest():
             "建议关注服饰品类的收藏加购率下降趋势。"
         ),
         "anomalies": ["数码品类销量增长 15%", "服饰品类收藏率下降 5%"],
-    }
-    return jsonify(mock)
+    })
 
 
 @bp.route("/history")
@@ -54,11 +54,11 @@ def history():
                 }
                 for r in rows
             ]
-            return jsonify(reports)
+            return ok(reports)
         except Exception as e:
-            return jsonify({"error": str(e)}), 500
+            return fail(str(e))
 
-    mock = [
+    return ok([
         {
             "date": "2014-12-18",
             "content": "今日 DAU 12,345（环比 +3.2%），总订单 8,900 单。全站转化率 4.2%。",
@@ -74,8 +74,7 @@ def history():
             "content": "今日 DAU 12,100（环比 +2.5%），总订单 9,050 单。全站转化率 4.1%。",
             "anomalies": ["服饰品类购买转化下降 8%"],
         },
-    ][:days]
-    return jsonify(mock)
+    ][:days])
 
 
 def _parse_anomalies(raw):

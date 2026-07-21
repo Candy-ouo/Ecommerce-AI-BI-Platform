@@ -1,5 +1,6 @@
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, request
 
+from api._response import ok, fail
 from config import USE_REAL_DATA
 from services.hive_client import query
 from services.queries import top_items_sql
@@ -18,11 +19,11 @@ def items():
                 {"item_id": str(r["item_id"]), "name": str(r["item_id"]), "pv": int(r["pv"]), "fav": int(r["fav"]), "buy": int(r["buy"])}
                 for r in df.to_dict("records")
             ]
-            return jsonify({"items": items})
+            return ok({"items": items})
         except Exception as e:
-            return jsonify({"error": str(e)}), 500
+            return fail(str(e))
 
-    mock = {
+    return ok({
         "items": [
             {
                 "item_id": f"item_{i}",
@@ -33,5 +34,4 @@ def items():
             }
             for i in range(1, limit + 1)
         ]
-    }
-    return jsonify(mock)
+    })

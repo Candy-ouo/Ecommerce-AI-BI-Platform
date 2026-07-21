@@ -3,8 +3,9 @@
 Real 模式：读 MySQL 中 B 的 recommender.py 产出的推荐结果表。
 USE_REAL_DATA=false 或不具备连接时返回 Mock。
 """
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, request
 
+from api._response import ok, fail
 from config import USE_REAL_DATA
 from services.db import get_recommend
 
@@ -24,18 +25,16 @@ def recommend():
                  "reason": r.get("reason", "")}
                 for r in rows
             ]
-            return jsonify({"items": items})
+            return ok({"items": items})
         except Exception as e:
-            return jsonify({"error": str(e)}), 500
+            return fail(str(e))
 
-    mock = {
-        "items": [
-            {
-                "item_id": f"rec_item_{i}",
-                "score": round(0.95 * (1 - (i - 1) / max(limit, 1)), 2),
-                "reason": "协同过滤 + 兴趣相似度",
-            }
-            for i in range(1, limit + 1)
-        ]
-    }
-    return jsonify(mock)
+    items = [
+        {
+            "item_id": str(232431562 + i * 10000000),
+            "score": round(0.95 * (1 - (i - 1) / max(limit, 1)), 2),
+            "reason": "协同过滤 + 兴趣相似度",
+        }
+        for i in range(1, limit + 1)
+    ]
+    return ok({"items": items})
