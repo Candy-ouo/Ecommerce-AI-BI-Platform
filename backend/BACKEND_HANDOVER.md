@@ -2,7 +2,7 @@
 
 负责人：C
 分支：`feature/c-backend`
-最后更新：2026-07-21（P2：API鉴权 + chat多轮对话 + 钉钉推送 + SSE晨报流）
+最后更新：2026-07-21（P3：KPI环比补全 + RFM动态分区 + 频率限制 + 连接池 + 日志轮转 + SSE清理 + 饼图推断 + 参数校验）
 
 ---
 
@@ -10,29 +10,47 @@
 
 ```
 backend/
-├── app.py                 ← Flask 入口，注册所有 Blueprint，CORS，启动 scheduler
+├── app.py                 ← Flask 入口，注册所有 Blueprint，CORS，启动 scheduler，日志轮转
 ├── config.py              ← 统一配置（Hive/MySQL/LLM/Flask/数据开关）
-├── scheduler.py           ← APScheduler 定时任务（每天 8:00 触发晨报生成）
+├── scheduler.py           ← APScheduler 定时任务（每天 8:00 触发晨报生成 + 钉钉推送 + SSE通知）
 ├── api/
 │   ├── __init__.py        ← Blueprint 注册（8 个模块）
-│   ├── _response.py        ← 统一响应包装 {code, message, data}（对齐 D 前端 api.js）
-│   ├── kpi.py             ← GET  /api/kpi/cards
-│   ├── trend.py           ← GET  /api/trend/active
-│   ├── top.py             ← GET  /api/top/items
-│   ├── funnel.py          ← GET  /api/funnel
-│   ├── rfm.py             ← GET  /api/rfm/dist（直读 Hive ads_user_rfm，与 KPI/漏斗统一）
+│   ├── _response.py       ← 统一响应包装 {code, message, data}（对齐 D 前端 api.js）
+│   ├── _auth.py           ← Bearer Token 鉴权装饰器（可选开启）
+│   ├── kpi.py             ← GET  /api/kpi/cards（含4项环比 + AI洞察）
+│   ├── trend.py           ← GET  /api/trend/active（参数校验：days/category）
+│   ├── top.py             ← GET  /api/top/items（sort_by白名单防注入）
+│   ├── funnel.py          ← GET  /api/funnel（含各级转化率）
+│   ├── rfm.py             ← GET  /api/rfm/dist（Mock/Real双模式，动态取最新分区）
 │   ├── recommend.py       ← GET  /api/recommend?user_id=（已接真实数据链路）
-│   ├── report.py          ← GET  /api/report/latest + /api/report/history
-│   └── chat.py            ← POST /api/chat（SSE 流式，惰性导入 B 模块 + Mock 降级）
+│   ├── report.py          ← GET  /api/report/latest + /history + /stream（SSE实时推送+断连清理）
+│   └── chat.py            ← POST /api/chat（SSE流式，smart_chat混合路由，频率限制，饼图推断）
 ├── services/
-│   ├── hive_client.py     ← pyhive 查询封装
-│   ├── db.py              ← MySQL 封装（RFM/推荐/晨报结果读取）
-│   └── queries.py         ← Hive SQL（字段名已对齐 A 的 04_ads_app.sql）
+│   ├── hive_client.py     ← pyhive/DuckDB 查询封装
+│   ├── db.py              ← MySQL 封装（DBUtils连接池 + 回退普通连接）
+│   └── queries.py         ← Hive SQL（字段名已对齐 A 的 schema.md）
 ├── API.md                 ← 接口详细文档（给 D 联调、B 写 tools.py）
-└── .env.example           ← 环境变量模板（占位符，不含真实 key）
+├── requirements.txt       ← 完整依赖清单（含 apscheduler/requests/DBUtils）
+├── .env.example           ← 环境变量模板（占位符，不含真实 key）
+└── logs/                  ← 日志轮转目录（backend.log, 5MB×3备份）
+```
 ```
 
-当前状态：9 个接口 + 1 个健康检查全部跑通（Mock 模式），82 测试全过。响应格式已统一为 `{code, message, data}` 包装（对齐 D 前端 `api.js`）。SSE chart 事件格式对齐 D 的 `ai_chat.js`（`{chartType, data: {categories, values}}`）。Mock chat 不再含 chart 事件（D 前端自行生成）。
+当前状态：**全部交付**。11 个接口（9 REST + 2 SSE）+ 1 个健康检查，Mock 模式全部跑通。99 个测试 0 失败。响应格式统一 `{code, message, data}`（对齐 D 前端 `api.js`）。SSE chart 事件支持 pie/line/bar 自动推断（对齐 D 的 `ai_chat.js`）。
+
+### P3 本轮新增（2026-07-21）
+
+| 改进 | 文件 | 说明 |
+|------|------|------|
+| KPI 环比补全 | `api/kpi.py` | 真实模式补充 orders_change、conversion_change、avg_pv_change |
+| RFM 动态分区 | `api/rfm.py` | SELECT MAX(dt) 去硬编码日期 |
+| 频率限制 | `api/chat.py` | 每 IP 每分钟最多 10 次，防刷 LLM 费用 |
+| 饼图推断 | `api/chat.py` | _df_to_chart 自动识别：行数≤5 → pie |
+| 参数校验 | `api/trend.py` | category 非整数返回 400 |
+| 连接池 | `services/db.py` | DBUtils PooledDB（最大5连接），未安装自动回退 |
+| 日志轮转 | `app.py` | RotatingFileHandler，5MB×3备份 → logs/backend.log |
+| SSE 清理 | `scheduler.py` / `api/report.py` | unsubscribe_report 修复订阅者内存泄漏 |
+| 依赖补全 | `requirements.txt` | 补充 apscheduler、requests、DBUtils |
 
 ---
 
@@ -171,10 +189,30 @@ answer = explain_result(user_question, result["sql"], df)
 
 ---
 
-## 四、C 的下一步（依赖项）
+## 四、C 交付状态
+
+### ✅ C 已完成（无需再动）
+
+| 类别 | 内容 |
+|------|------|
+| REST 接口 | kpi/trend/top/funnel/rfm/recommend/report(latest+history) — Mock/Real 双模式 |
+| SSE 接口 | /api/chat（流式对话 + 多轮上下文 + 频率限制）、/api/report/stream（晨报实时推送） |
+| 鉴权 | Bearer Token（可选开启，_auth.py 装饰器 + app.py before_request） |
+| 定时任务 | APScheduler 每日 8:00 触发晨报 + 钉钉推送 + SSE 通知 |
+| 参数校验 | days/category 非法值返回 400 |
+| 数据安全 | sort_by 白名单防注入、category int() 强转 |
+| KPI | 4 项环比（dau/orders/conversion/avg_pv）+ AI 洞察 |
+| RFM | Mock 恢复 + 真实模式动态取 MAX(dt) |
+| Chat | B 的 smart_chat 混合路由 + generate_sql 降级 + 频率限制 + 饼图推断 |
+| 连接池 | MySQL DBUtils PooledDB（回退兼容） |
+| 日志 | RotatingFileHandler 轮转 |
+| 内存泄漏 | SSE 订阅者 unsubscribe 清理 |
+| 依赖 | requirements.txt 完整（含 apscheduler/requests/DBUtils） |
+
+### ⏳ 等别人（C 管不了）
 
 | 依赖 | 对方交付后 C 做什么 |
 |------|-------------------|
-| A | ✅ `queries.py` 常量已核对 `Docs/schema.md`，20 个字段全部一致；待 A 在 Hive 建表后可切 `USE_REAL_DATA=true` |
-| B | `ai/morning_report.py` 已接入 `scheduler.py`（每日8:00生成并落库）；`ai/` NL2SQL 模块已通过 `chat.py` 惰性导入生效 |
+| A | Hive 表建好后切 `USE_REAL_DATA=true`，真实链路即可跑通 |
+| B | `ai/morning_report.py` 完成后 scheduler 真实生成晨报（当前 Mock 打日志） |
 | D | 前端联调反馈 → C 修接口 bug |

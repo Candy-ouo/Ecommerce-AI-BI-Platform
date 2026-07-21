@@ -67,17 +67,37 @@ def cards():
             prev = rows[1] if len(rows) > 1 else None
 
             dau = int(today[F_DAU])
+            orders = int(today[F_TOTAL_ORDERS])
+            conversion = float(today[F_BUY_CONVERSION])
+            avg_pv = float(today[F_AVG_PV])
+
             dau_change = (
                 (today[F_DAU] - prev[F_DAU]) / prev[F_DAU]
                 if prev and prev[F_DAU] else 0.0
             )
+            orders_change = (
+                (today[F_TOTAL_ORDERS] - prev[F_TOTAL_ORDERS]) / prev[F_TOTAL_ORDERS]
+                if prev and prev[F_TOTAL_ORDERS] else 0.0
+            )
+            conversion_change = (
+                (today[F_BUY_CONVERSION] - prev[F_BUY_CONVERSION]) / prev[F_BUY_CONVERSION]
+                if prev and prev[F_BUY_CONVERSION] else 0.0
+            )
+            avg_pv_change = (
+                (today[F_AVG_PV] - prev[F_AVG_PV]) / prev[F_AVG_PV]
+                if prev and prev[F_AVG_PV] else 0.0
+            )
+
             data = {
                 "date": str(today.get(F_DT, "2014-12-18")),
                 "dau": dau,
                 "dau_change": round(float(dau_change), 4),
-                "orders": int(today[F_TOTAL_ORDERS]),
-                "conversion_rate": round(float(today[F_BUY_CONVERSION]), 4),
-                "avg_pv": round(float(today[F_AVG_PV]), 2),
+                "orders": orders,
+                "orders_change": round(float(orders_change), 4),
+                "conversion_rate": round(conversion, 4),
+                "conversion_change": round(float(conversion_change), 4),
+                "avg_pv": round(avg_pv, 2),
+                "avg_pv_change": round(float(avg_pv_change), 4),
             }
             _try_add_insight(data)
             return ok(data)

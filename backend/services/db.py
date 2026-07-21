@@ -1,11 +1,44 @@
 """MySQL 连接 + 常用查询（RFM 结果表 / 推荐结果表）。
 
 这些结果由 B 的模型脚本产出、A 的 ADS 层写入 MySQL，C 只负责读。
+使用 DBUtils 连接池，避免每次查询新建连接。
 """
 from config import MYSQL_HOST, MYSQL_PORT, MYSQL_USER, MYSQL_PASSWORD, MYSQL_DATABASE
 
+_pool = None
+
+
+def _get_pool():
+    """惰性创建 MySQL 连接池（线程安全，最大 5 个连接）。"""
+    global _pool
+    if _pool is None:
+        try:
+            from dbutils.pooled_db import PooledDB
+            import pymysql
+            _pool = PooledDB(
+                creator=pymysql,
+                maxconnections=5,
+                mincached=1,
+                blocking=True,
+                host=MYSQL_HOST, port=MYSQL_PORT,
+                user=MYSQL_USER, password=MYSQL_PASSWORD,
+                database=MYSQL_DATABASE, charset="utf8mb4",
+                cursorclass=pymysql.cursors.DictCursor,
+            )
+        except ImportError:
+            # DBUtils 未安装时回退到普通连接
+            _pool = False
+            return None
+    if _pool is False:
+        return None
+    return _pool
+
 
 def get_connection():
+    """获取 MySQL 连接（优先连接池，回退普通连接）。"""
+    pool = _get_pool()
+    if pool is not None:
+        return pool.connection()
     import pymysql
     return pymysql.connect(
         host=MYSQL_HOST, port=MYSQL_PORT, user=MYSQL_USER,

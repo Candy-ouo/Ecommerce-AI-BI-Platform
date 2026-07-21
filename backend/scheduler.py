@@ -27,6 +27,14 @@ def subscribe_report(callback):
     _report_subscribers.append(callback)
 
 
+def unsubscribe_report(callback):
+    """取消注册（SSE 客户端断开时清理，避免内存泄漏）。"""
+    try:
+        _report_subscribers.remove(callback)
+    except ValueError:
+        pass
+
+
 def _notify_subscribers(report: dict):
     """通知所有 SSE 订阅者。"""
     for cb in _report_subscribers:
