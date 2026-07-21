@@ -2,7 +2,7 @@
 
 > **负责人：A — 数仓架构师**
 > **下游使用者：B（NL2SQL Prompt 构建）+ C（API SQL 查询编写）**
-> **最后更新：2026-07-20**
+> **最后更新：2026-07-21**
 > **依据：requirements.md 5.1 数据仓库设计**
 
 ---
@@ -19,14 +19,14 @@ DWD 明细层  ←── 干净、关联好的明细数据
 ODS 贴源层  ←── E 清洗后直接导入
 ```
 
-共 **13 张表**：
+共 **14 张表**：
 
 | 层级 | 表数 | 表名 |
 |------|------|------|
 | ODS  | 2    | `ods_user_behavior`, `ods_item_info` |
 | DWD  | 3    | `dwd_user_behavior`, `dim_item`, `dim_category` |
 | DWS  | 4    | `dws_user_day`, `dws_item_day`, `dws_category_day`, `dws_platform_day` |
-| ADS  | 4    | `ads_daily_kpi`, `ads_funnel`, `ads_category_topn`, `ads_user_rfm` |
+| ADS  | 5    | `ads_daily_kpi`, `ads_funnel`, `ads_category_topn`, `ads_user_rfm`, `ads_user_recommend` |
 
 ---
 
@@ -258,6 +258,22 @@ ODS 贴源层  ←── E 清洗后直接导入
 | **一般发展用户** | 1-2（低） | 1-2（低） | 3（高） | 久未活跃 + 低频，但买得广 |
 | **低价值用户** | 1-2（低） | 1-2（低） | 1-2（低） | 三项都低，流失用户 |
 
+### 5.5 ads_user_recommend — 用户个性化推荐
+
+**API**：`GET /api/recommend?user_id=`
+**来源**：B 的 `recommender.py`（Item-CF 协同过滤）产出 CSV → HDFS → Hive
+**分区**：`dt`（统计截止日）
+
+| 字段 | 类型 | 说明 | 示例值 |
+|------|------|------|--------|
+| user_id | BIGINT | 用户ID | `4913` |
+| item_id | BIGINT | 推荐商品ID | `106533518` |
+| score | DOUBLE | 推荐分数（余弦相似度） | `0.8165` |
+| reason | STRING | 推荐理由 | `与您购买过的商品361346418偏好相似（相似度0.82）` |
+| dt | STRING | 分区字段 | `2014-12-18` |
+
+> ⚠️ 此表依赖 B 先运行 `python analysis/recommender.py`，产出 CSV 后导入 Hive。B 未跑时 C 自动降级为全站热销排行。
+
 ---
 
 ## 六、分区与查询注意事项
@@ -265,7 +281,7 @@ ODS 贴源层  ←── E 清洗后直接导入
 ### 6.1 分区策略
 
 - **有分区的表**（按 `dt` 分区，格式 `YYYY-MM-DD`）：
-  `ods_user_behavior`, `dwd_user_behavior`, `dws_user_day`, `dws_item_day`, `dws_category_day`, `dws_platform_day`, `ads_daily_kpi`, `ads_funnel`, `ads_category_topn`, `ads_user_rfm`
+  `ods_user_behavior`, `dwd_user_behavior`, `dws_user_day`, `dws_item_day`, `dws_category_day`, `dws_platform_day`, `ads_daily_kpi`, `ads_funnel`, `ads_category_topn`, `ads_user_rfm`, `ads_user_recommend`
 
 - **无分区的表**（维度表，全量）：
   `ods_item_info`, `dim_item`, `dim_category`
@@ -300,6 +316,13 @@ WHERE dt = '2014-12-18'
 GROUP BY rfm_label_cn
 ORDER BY cnt DESC;
 
+-- 个性化推荐（C 的 /api/recommend 用）
+SELECT item_id, score, reason
+FROM ads_user_recommend
+WHERE dt = '2014-12-18' AND user_id = 4913
+ORDER BY score DESC
+LIMIT 10;
+
 -- ❌ 不带分区全表扫描（会很慢，不要这样写）
 SELECT * FROM dws_platform_day;
 ```
@@ -320,7 +343,7 @@ dws_user  dws_item  dws_category  dws_platform
     │         │          │              │
     └─────────┴──────────┴──────────────┘
                    ↓
-    ads_daily_kpi / ads_funnel / ads_category_topn / ads_user_rfm
+    ads_daily_kpi / ads_funnel / ads_category_topn / ads_user_rfm / ads_user_recommend
 ```
 
 ```

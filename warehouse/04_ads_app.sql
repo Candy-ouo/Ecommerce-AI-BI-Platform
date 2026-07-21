@@ -222,7 +222,31 @@ FROM (
 ) rfm_scored;
 
 -- ----------------------------
--- 5. 验证
+-- 5. 用户推荐结果表 ads_user_recommend
+--    来源：B 的 recommender.py 产出 CSV → HDFS → 导入
+--    API: GET /api/recommend
+-- ----------------------------
+DROP TABLE IF EXISTS ads_user_recommend;
+CREATE TABLE ads_user_recommend (
+    user_id         BIGINT   COMMENT '用户ID',
+    item_id         BIGINT   COMMENT '推荐商品ID',
+    score           DOUBLE   COMMENT '推荐分数（余弦相似度）',
+    reason          STRING   COMMENT '推荐理由'
+)
+COMMENT 'ADS 用户个性化推荐 — B 的 Item-CF 模型产出'
+PARTITIONED BY (dt STRING COMMENT '分区日期')
+ROW FORMAT DELIMITED
+FIELDS TERMINATED BY ','
+STORED AS TEXTFILE
+TBLPROPERTIES ('skip.header.line.count'='1');
+
+-- 加载数据：
+-- docker cp data/recommend_result.csv tier4_stu_namenode:/tmp/
+-- docker exec tier4_stu_namenode hdfs dfs -put -f /tmp/recommend_result.csv /user/data/
+-- docker exec tier4_stu_hiveserver2 hive -e "USE ecommerce_bi; LOAD DATA INPATH '/user/data/recommend_result.csv' OVERWRITE INTO TABLE ads_user_recommend PARTITION (dt='2014-12-18');"
+
+-- ----------------------------
+-- 6. 验证
 -- ----------------------------
 SELECT 'ads_daily_kpi'     AS table_name, COUNT(*) AS row_cnt, MAX(dt) AS latest_dt FROM ads_daily_kpi
 UNION ALL
@@ -230,4 +254,6 @@ SELECT 'ads_funnel',        COUNT(*), MAX(dt) FROM ads_funnel
 UNION ALL
 SELECT 'ads_category_topn', COUNT(*), MAX(dt) FROM ads_category_topn
 UNION ALL
-SELECT 'ads_user_rfm',      COUNT(*), MAX(dt) FROM ads_user_rfm;
+SELECT 'ads_user_rfm',         COUNT(*), MAX(dt) FROM ads_user_rfm
+UNION ALL
+SELECT 'ads_user_recommend',   COUNT(*), MAX(dt) FROM ads_user_recommend;
