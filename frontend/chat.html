@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AI 智能助手 - 电商 BI</title>
+  <link rel="stylesheet" href="css/dashboard.css" />
+  <!-- ECharts CDN：对话内图表渲染依赖 -->
+  <script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"></script>
+</head>
+<body>
+  <div class="chat-page">
+    <div class="chat-dialog chat-panel">
+      <!-- 对话框头部 -->
+      <div class="chat-dialog-header">
+        <a href="index.html" class="chat-dialog-avatar" title="返回大屏">
+          <svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+            <defs>
+              <linearGradient id="faceGradChat" x1="0" y1="0" x2="1" y2="1">
+                <stop offset="0%" stop-color="#ffe6e6"/>
+                <stop offset="100%" stop-color="#ffd1d9"/>
+              </linearGradient>
+            </defs>
+            <circle cx="50" cy="50" r="50" fill="url(#faceGradChat)"/>
+            <ellipse cx="50" cy="55" rx="22" ry="18" fill="#ff9999" opacity="0.25"/>
+            <circle cx="36" cy="46" r="5" fill="#4a3b3b"/>
+            <circle cx="64" cy="46" r="5" fill="#4a3b3b"/>
+            <path d="M42 64 Q50 70 58 64" stroke="#d66d8e" stroke-width="3" fill="none" stroke-linecap="round"/>
+            <ellipse cx="30" cy="56" rx="5" ry="3" fill="#ff9eb5" opacity="0.6"/>
+            <ellipse cx="70" cy="56" rx="5" ry="3" fill="#ff9eb5" opacity="0.6"/>
+            <path d="M20 38 Q25 25 38 28" stroke="#6b4c4c" stroke-width="4" fill="none" stroke-linecap="round"/>
+            <path d="M80 38 Q75 25 62 28" stroke="#6b4c4c" stroke-width="4" fill="none" stroke-linecap="round"/>
+          </svg>
+        </a>
+        <div>
+          <div class="chat-dialog-title">AI 智能助手</div>
+          <div class="chat-dialog-subtitle">点击头像可返回大屏</div>
+        </div>
+      </div>
+
+      <!-- 消息区 -->
+      <div class="chat-messages" id="chat-messages"></div>
+
+      <!-- 输入区 -->
+      <div class="chat-input">
+        <input type="text" id="chat-input" placeholder="问问数据，例如：上周销量最高的商品？" autocomplete="off" />
+        <button id="chat-send">发送</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- JS：聊天页只需要 config + api + ai_chat -->
+  <script src="js/config.js"></script>
+  <script src="js/api.js"></script>
+  <script src="js/ai_chat.js"></script>
+  <script>
+    document.addEventListener("DOMContentLoaded", () => {
+      AIChat.init();
+    });
+  </script>
+</body>
+</html>
