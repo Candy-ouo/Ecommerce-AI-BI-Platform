@@ -10,6 +10,7 @@ import sys
 import time
 import traceback
 
+import pandas as pd
 from flask import Blueprint, request, Response, stream_with_context
 
 from config import USE_REAL_DATA
@@ -84,6 +85,12 @@ def chat():
                     # 4. 解读结果
                     answer = _explain_result(message, result["sql"], df)
                     yield f"data: {json.dumps({'type': 'text', 'content': answer}, ensure_ascii=False)}\n\n"
+
+                    # 5. 图表事件（SQL 结果为表结构时附带）
+                    chart = _df_to_chart(df)
+                    if chart:
+                        yield f"data: {json.dumps({'type': 'chart', **chart}, ensure_ascii=False)}\n\n"
+
                     yield f"data: {json.dumps({'type': 'done'}, ensure_ascii=False)}\n\n"
                     return
 
@@ -100,6 +107,37 @@ def chat():
             yield f"data: {json.dumps({'type': 'text', 'content': chunk}, ensure_ascii=False)}\n\n"
             time.sleep(0.05)
 
+        # Mock 图表事件（满足前端 chart 契约）
+        chart = {
+            "chartType": "bar",
+            "title": "示例图表（Mock）",
+            "x": ["A", "B", "C", "D"],
+            "y": [120, 200, 150, 80],
+            "xLabel": "类别",
+            "yLabel": "数值",
+        }
+        yield f"data: {json.dumps({'type': 'chart', **chart}, ensure_ascii=False)}\n\n"
+
         yield f"data: {json.dumps({'type': 'done'}, ensure_ascii=False)}\n\n"
 
     return Response(stream_with_context(generate()), mimetype="text/event-stream")
+
+
+def _df_to_chart(df):
+    """把 SQL 结果 DataFrame 转成 chart 事件数据（取首列作 x，首个数值列作 y）。"""
+    if df is None or getattr(df, "empty", True) or len(df.columns) < 2:
+        return None
+    cols = list(df.columns)
+    x = [str(v) for v in df[cols[0]].tolist()[:20]]
+    for c in cols[1:]:
+        if pd.api.types.is_numeric_dtype(df[c]):
+            y = [float(v) for v in df[c].tolist()[:20]]
+            return {
+                "chartType": "bar",
+                "title": "查询结果",
+                "x": x,
+                "y": y,
+                "xLabel": str(cols[0]),
+                "yLabel": str(c),
+            }
+    return None

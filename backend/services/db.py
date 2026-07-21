@@ -33,22 +33,23 @@ def get_rfm():
 def get_recommend(user_id: int, limit: int = 10):
     """读某用户的推荐列表（供 /api/recommend）。
 
-    对齐 B 的 recommender.py 产出（按 ai_design.md 含 reason 列）。
-    若 B 的 recommend_result 表尚未包含 reason 列，自动降级只查 item_id/score。
+    对齐 B 的 b_dual_path.md：推荐数据的 MySQL 表名为 recommends。
+    B 的 recommender.py 产出 data/recommend_result.csv，导入 MySQL 后表名 expects 为 recommends。
+    若表尚未包含 reason 列，自动降级只查 item_id/score。
     """
     # TODO(Day2): 接 B 的 recommender 产出表
     with get_connection() as conn:
         with conn.cursor() as cur:
             try:
                 cur.execute(
-                    "SELECT item_id, score, reason FROM recommend_result "
+                    "SELECT item_id, score, reason FROM recommends "
                     "WHERE user_id=%s ORDER BY score DESC LIMIT %s",
                     (user_id, limit),
                 )
             except Exception:
                 # reason 列尚未建好时降级
                 cur.execute(
-                    "SELECT item_id, score FROM recommend_result "
+                    "SELECT item_id, score FROM recommends "
                     "WHERE user_id=%s ORDER BY score DESC LIMIT %s",
                     (user_id, limit),
                 )
@@ -78,3 +79,22 @@ def get_report_history(days: int = 7):
                 (int(days),),
             )
             return cur.fetchall()
+
+
+def save_report(report_date, content, anomalies):
+    """写入一期晨报（供 scheduler 调 B 的 generate_report 后落库）。
+
+    anomalies 接受 list 或字符串，自动以 JSON 存储；同日重跑用
+    ON DUPLICATE KEY UPDATE 覆盖，避免重复行。
+    """
+    import json
+    anomalies_json = anomalies if isinstance(anomalies, str) else json.dumps(anomalies, ensure_ascii=False)
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "INSERT INTO morning_report (report_date, content, anomalies) "
+                "VALUES (%s, %s, %s) "
+                "ON DUPLICATE KEY UPDATE content=%s, anomalies=%s",
+                (str(report_date), content, anomalies_json, content, anomalies_json),
+            )
+            conn.commit()

@@ -24,7 +24,13 @@ def items():
 
     mock = {
         "items": [
-            {"item_id": f"item_{i}", "name": f"item_{i}", "pv": 9000 - i * 100, "fav": 3000 - i * 80, "buy": 1500 - i * 50}
+            {
+                "item_id": f"item_{i}",
+                "name": f"item_{i}",
+                "pv": 10000 - i * 90,
+                "fav": 6000 - i * 50,
+                "buy": 3000 - i * 25,
+            }
             for i in range(1, limit + 1)
         ]
     }

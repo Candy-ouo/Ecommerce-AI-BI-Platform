@@ -18,6 +18,7 @@ T_KPI = "ads_daily_kpi"            # 日KPI汇总：dau/orders/conversion_rate/a
 T_PLATFORM_DAY = "dws_platform_day"  # 全站日粒度：uv(=dau)/pv/...
 T_ITEM_DAY = "dws_item_day"        # 商品日粒度：item_id/pv/fav/cart/buy
 T_FUNNEL = "ads_funnel"            # 全站漏斗：pv/fav/cart/buy
+T_RFM = "ads_user_rfm"            # RFM 用户分层（A 路径 Hive 表）
 
 # 字段名（已与 A 的 Docs/schema.md + warehouse/*.sql 对齐）
 F_DT = "dt"
@@ -44,10 +45,6 @@ F_PV_USERS = "pv_users"
 F_FAV_USERS = "fav_users"
 F_CART_USERS = "cart_users"
 F_BUY_USERS = "buy_users"
-F_PV_TO_FAV_RATE = "pv_to_fav_rate"
-F_FAV_TO_CART_RATE = "fav_to_cart_rate"
-F_CART_TO_BUY_RATE = "cart_to_buy_rate"
-F_PV_TO_BUY_RATE = "pv_to_buy_rate"
 
 
 def kpi_cards_sql():
@@ -88,13 +85,13 @@ def top_items_sql(limit: int = 10, sort_by: str = "pv"):
 
 
 def funnel_sql():
-    """全站转化漏斗各环节人数 + 转化率（取最新一天的全站汇总行）。"""
+    """全站转化漏斗各环节人数（取最新一天的全站汇总行）。
+
+    注：A 的 ads_funnel 含转化率列，但 DEV_PLAN 接口契约（D 的测试）只取
+    pv/fav/cart/buy 四字段；若 D 后续要给漏斗图加转化率，再扩展 SELECT。
+    """
     return f"""
-    SELECT {F_PV_USERS} AS pv, {F_FAV_USERS} AS fav, {F_CART_USERS} AS cart, {F_BUY_USERS} AS buy,
-           {F_PV_TO_FAV_RATE} AS pv_to_fav_rate,
-           {F_FAV_TO_CART_RATE} AS fav_to_cart_rate,
-           {F_CART_TO_BUY_RATE} AS cart_to_buy_rate,
-           {F_PV_TO_BUY_RATE} AS pv_to_buy_rate
+    SELECT {F_PV_USERS} AS pv, {F_FAV_USERS} AS fav, {F_CART_USERS} AS cart, {F_BUY_USERS} AS buy
     FROM {T_FUNNEL}
     WHERE item_category IS NULL
     ORDER BY {F_DT} DESC
