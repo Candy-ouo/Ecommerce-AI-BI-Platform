@@ -1,7 +1,7 @@
 """定时任务调度器：每天 8:00 触发 AI 晨报生成。
 
-当前为框架模式（Mock），等 B 的 morning_report.py 就绪后，
-取消 _generate_daily_report() 中的注释，接真实生成逻辑。
+接 B 的 ai.morning_report.generate_report() 生成晨报，落库到 MySQL
+morning_report 表，D 通过 /api/report/* 展示。
 """
 import logging
 from datetime import datetime
@@ -16,16 +16,20 @@ def _generate_daily_report():
     """每日晨报生成任务（每天 8:00 触发）。"""
     logger.info("晨报生成任务触发 — %s", datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
 
-    if USE_REAL_DATA:
-        # TODO: 等 B 的 morning_report.py 就绪后接入
-        #   from ai.morning_report import generate_report
-        #   report = generate_report()
-        #   # 报告内容由 B 的模块自行存入 MySQL，C 不在此重复写库
-        #   logger.info("晨报生成成功 — %s", report.get("date", ""))
-        #   return report
-        logger.warning("晨报生成：USE_REAL_DATA=true 但 B 模块未接入，跳过")
-    else:
-        logger.info("晨报生成 Mock：数据开关关闭，仅打日志")
+    if not USE_REAL_DATA:
+        logger.info("晨报生成 Mock：USE_REAL_DATA=false，仅打日志")
+        return
+
+    try:
+        # B 的 AI 晨报模块
+        from ai.morning_report import generate_report
+        from services.db import save_report
+
+        report = generate_report()
+        save_report(report["date"], report["content"], report["anomalies"])
+        logger.info("晨报生成成功 — %s", report.get("date", ""))
+    except Exception as e:
+        logger.error("晨报生成失败: %s", e)
 
 
 def start_scheduler():

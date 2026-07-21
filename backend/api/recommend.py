@@ -30,8 +30,11 @@ def recommend():
 
     mock = {
         "items": [
-            {"item_id": f"rec_item_{i}", "score": round(0.95 - i * 0.05, 2),
-             "reason": "协同过滤 + 兴趣相似度"}
+            {
+                "item_id": f"rec_item_{i}",
+                "score": round(0.95 * (1 - (i - 1) / max(limit, 1)), 2),
+                "reason": "协同过滤 + 兴趣相似度",
+            }
             for i in range(1, limit + 1)
         ]
     }

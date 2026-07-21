@@ -72,7 +72,7 @@ QWEN_BASE_URL=https://{WorkspaceId}.cn-beijing.maas.aliyuncs.com/compatible-mode
 | 日 KPI | `ads_daily_kpi` | dt, dau, total_orders, buy_conversion, avg_pv |
 | 全站日 | `dws_platform_day` | dt, total_uv, total_pv |
 | 商品日 | `dws_item_day` | dt, item_id, pv_cnt, fav_cnt, buy_cnt |
-| 漏斗 | `ads_funnel` | dt, pv_users, fav_users, cart_users, buy_users, pv_to_fav_rate, fav_to_cart_rate, cart_to_buy_rate, pv_to_buy_rate |
+| 漏斗 | `ads_funnel` | dt, pv_users, fav_users, cart_users, buy_users（转化率列待 D 需要再扩展） |
 
 > 另外 C 的 `rfm.py` / `recommend.py` 从 **MySQL** 读（B 模型产出、你建表写入），
 > 这两张表（RFM 结果表、推荐结果表）的表名/字段也请一并确认。最终以你的 `docs/schema.md` 为准。
@@ -171,5 +171,5 @@ answer = explain_result(user_question, result["sql"], df)
 | 依赖 | 对方交付后 C 做什么 |
 |------|-------------------|
 | A | 确认表名/字段 → `queries.py` 常量已对齐 `04_ads_app.sql`，待切 `USE_REAL_DATA=true` |
-| B | `ai/morning_report.py` 推送 → `scheduler.py` 接入 `generate_report()`；`ai/` NL2SQL 模块推送 → `chat.py` 惰性导入自动生效 |
+| B | `ai/morning_report.py` 已接入 `scheduler.py`（每日8:00生成并落库）；`ai/` NL2SQL 模块已通过 `chat.py` 惰性导入生效 |
 | D | 前端联调反馈 → C 修接口 bug |

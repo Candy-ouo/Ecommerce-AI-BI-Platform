@@ -551,15 +551,23 @@ class TestChat:
 # ============================================================
 
 class TestReport:
-    """DEV_PLAN 定义但尚未实现"""
+    """DEV_PLAN 契约: GET /api/report/latest → {date, content, anomalies}; GET /api/report/history → [...]"""
 
-    def test_report_latest_returns_404(self, client):
+    def test_report_latest_ok(self, client):
         r = client.get("/api/report/latest")
-        assert r.status_code == 404
+        assert r.status_code == 200
+        data = r.get_json()
+        for f in ("date", "content", "anomalies"):
+            assert f in data, f"report/latest missing field: {f}"
 
-    def test_report_history_returns_404(self, client):
+    def test_report_history_ok(self, client):
         r = client.get("/api/report/history?days=7")
-        assert r.status_code == 404
+        assert r.status_code == 200
+        data = r.get_json()
+        assert isinstance(data, list)
+        assert len(data) > 0
+        for f in ("date", "content", "anomalies"):
+            assert f in data[0], f"report/history[0] missing field: {f}"
 
 
 # ============================================================
@@ -577,16 +585,13 @@ class TestCrossApi:
         assert abs(kpi["orders"] - funnel["buy"]) / funnel["buy"] < 10, \
             "KPI orders and funnel buy are too far apart"
 
-    @pytest.mark.skip(reason="Mock data bug: RFM total=6600 < DAU=12345, C needs to fix mock values")
     def test_rfm_total_matches_kpi_dau(self, client):
-        """RFM 总用户数与 dau 数量级应匹配 (MOCK BUG)"""
+        """RFM 总用户数应 >= 单日 DAU（多天累计用户池 >= 单日活跃）"""
         kpi = client.get("/api/kpi/cards").get_json()
         rfm = client.get("/api/rfm/dist").get_json()
         rfm_total = sum(rfm["counts"])
-        # RFM总用户 >= 日活（多天累计的用户池应 >= 单日活跃）
-        # BUG: Mock 数据 RFM=6600 < DAU=12345，逻辑上不可能
         assert rfm_total >= kpi["dau"], \
-            f"BUG: RFM total ({rfm_total}) should >= DAU ({kpi['dau']})"
+            f"RFM total ({rfm_total}) should >= DAU ({kpi['dau']})"
 
     def test_all_apis_return_json(self, client):
         """所有 GET 接口返回 JSON"""

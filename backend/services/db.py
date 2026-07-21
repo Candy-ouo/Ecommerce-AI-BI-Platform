@@ -78,3 +78,22 @@ def get_report_history(days: int = 7):
                 (int(days),),
             )
             return cur.fetchall()
+
+
+def save_report(report_date, content, anomalies):
+    """写入一期晨报（供 scheduler 调 B 的 generate_report 后落库）。
+
+    anomalies 接受 list 或字符串，自动以 JSON 存储；同日重跑用
+    ON DUPLICATE KEY UPDATE 覆盖，避免重复行。
+    """
+    import json
+    anomalies_json = anomalies if isinstance(anomalies, str) else json.dumps(anomalies, ensure_ascii=False)
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "INSERT INTO morning_report (report_date, content, anomalies) "
+                "VALUES (%s, %s, %s) "
+                "ON DUPLICATE KEY UPDATE content=%s, anomalies=%s",
+                (str(report_date), content, anomalies_json, content, anomalies_json),
+            )
+            conn.commit()
