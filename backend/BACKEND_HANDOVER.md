@@ -73,9 +73,11 @@ QWEN_BASE_URL=https://{WorkspaceId}.cn-beijing.maas.aliyuncs.com/compatible-mode
 | 全站日 | `dws_platform_day` | dt, total_uv, total_pv |
 | 商品日 | `dws_item_day` | dt, item_id, pv_cnt, fav_cnt, buy_cnt |
 | 漏斗 | `ads_funnel` | dt, pv_users, fav_users, cart_users, buy_users（转化率列待 D 需要再扩展） |
+| RFM | `ads_user_rfm` | dt, user_id, R, F, M, R_score, F_score, M_score, rfm_label |
 
 > 另外 C 的 `rfm.py` / `recommend.py` 从 **MySQL** 读（B 模型产出、你建表写入），
-> 这两张表（RFM 结果表、推荐结果表）的表名/字段也请一并确认。最终以你的 `docs/schema.md` 为准。
+> A 路径 RFM 查 Hive `ads_user_rfm`，B 路径查 MySQL `rfm_result`（详见 B 的 b_dual_path.md）。
+> 推荐数据查 MySQL 表 `recommends`（B 的 CSV 导入后建此表）。最终以你的 `docs/schema.md` 为准。
 
 ---
 
@@ -101,15 +103,22 @@ B 的 `rfm_model.py` 产出 8 类标签（与 C 当前 Mock 命名不同），C 
 
 ### 3.2 推荐结果结构（接真实数据时返回 item_id + score + reason）
 
-B 的 `recommender.py`（按 ai_design.md v2.x）产出推荐结果字段：`user_id, item_id, score, reason`。
+B 的 `recommender.py` 产出 `data/recommend_result.csv`（字段 `user_id, item_id, score, reason`），导入 MySQL 后表名为 `recommends`（按 B 的 b_dual_path.md）。
 `reason` 为 LLM 生成的推荐理由（按 DEV_PLAN 需求）。
 C 的 `GET /api/recommend` 已对齐，返回 `[{item_id, score, reason}]`。
 
 ### 3.3 数据导入 MySQL 参考（B 提供）
 
 ```sql
+-- RFM 结果
 LOAD DATA LOCAL INFILE 'data/rfm_result.csv'
 INTO TABLE rfm_result
+FIELDS TERMINATED BY ',' ENCLOSED BY '"'
+IGNORE 1 ROWS;
+
+-- 推荐结果（注意 MySQL 表名为 recommends，不是 recommend_result）
+LOAD DATA LOCAL INFILE 'data/recommend_result.csv'
+INTO TABLE recommends
 FIELDS TERMINATED BY ',' ENCLOSED BY '"'
 IGNORE 1 ROWS;
 ```
