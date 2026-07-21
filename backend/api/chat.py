@@ -31,6 +31,24 @@ bp = Blueprint("chat", __name__, url_prefix="/api/chat")
 logger = logging.getLogger(__name__)
 
 
+# ── IP 频率限制（防刷 LLM 费用）────────────────
+_rate_limit_store: dict = defaultdict(list)
+_RATE_MAX = 10       # 每分钟最多 10 次
+_RATE_WINDOW = 60    # 窗口 60 秒
+
+
+def _check_rate_limit(ip: str, max_requests: int = _RATE_MAX, window: int = _RATE_WINDOW) -> bool:
+    """基于 IP 的滑动窗口限流。返回 True 表示放行，False 触发限流。"""
+    now = time.time()
+    bucket = _rate_limit_store[ip]
+    while bucket and bucket[0] < now - window:
+        bucket.pop(0)
+    if len(bucket) >= max_requests:
+        return False
+    bucket.append(now)
+    return True
+
+
 # ── 会话上下文存储（内存，进程重启后丢失；生产可替换为 Redis）──
 _MAX_HISTORY = 10          # 每会话最多保留 10 轮（Q+A）
 _SESSION_TTL = 3600        # 会话 1 小时无活动自动过期（秒）
@@ -59,17 +77,24 @@ def _cleanup_expired_sessions():
 # ── 延迟导入 B 模块（避免 import 阶段炸掉整个 app）──
 _generate_sql = None
 _explain_result = None
+_smart_chat = None
 _query = None
 
 def _lazy_import():
     """惰性加载 B 模块 + C 的 hive_client。失败则留 None，chat() 自动降级 Mock。"""
-    global _generate_sql, _explain_result, _query
+    global _generate_sql, _explain_result, _smart_chat, _query
     if _generate_sql is None:
         try:
             from ai.nl2sql.sql_generator import generate_sql as gs
             _generate_sql = gs
         except Exception:
             logger.warning("sql_generator 不可用: %s", traceback.format_exc())
+    if _smart_chat is None:
+        try:
+            from ai.nl2sql.sql_generator import smart_chat as sc
+            _smart_chat = sc
+        except Exception:
+            logger.warning("smart_chat 不可用: %s", traceback.format_exc())
     if _explain_result is None:
         try:
             from ai.nl2sql.result_explainer import explain_result as er
@@ -119,6 +144,14 @@ def chat():
             yield f"data: {json.dumps({'type': 'done', 'session_id': session_id}, ensure_ascii=False)}\n\n"
         return Response(stream_with_context(_empty()), mimetype="text/event-stream")
 
+    # 频率限制
+    client_ip = request.remote_addr or "127.0.0.1"
+    if not _check_rate_limit(client_ip):
+        def _rate_limited():
+            yield f"data: {json.dumps({'type': 'text', 'content': '请求过于频繁，请稍后再试。'}, ensure_ascii=False)}\n\n"
+            yield f"data: {json.dumps({'type': 'done', 'session_id': session_id}, ensure_ascii=False)}\n\n"
+        return Response(stream_with_context(_rate_limited()), mimetype="text/event-stream")
+
     # 多轮对话：将之前对话上下文化
     contextual_message = _build_context_message(message, session_id)
 
@@ -126,32 +159,39 @@ def chat():
         # 记录用户消息
         _append_session(session_id, "user", message)
 
-        # ── 走真实 NL2SQL ──
+        # ── 走真实 NL2SQL（B 的 smart_chat 混合模式）──
         if USE_REAL_DATA:
             _lazy_import()
-            if _generate_sql and _query and _explain_result:
+            if _smart_chat and _query and _explain_result:
                 try:
-                    # 1. NL → SQL（带上下文）
-                    result = _generate_sql(contextual_message)
+                    # 1. B 的混合路由：意图分类 + SQL 生成/闲聊/知识问答
+                    sc_result = _smart_chat(contextual_message)
 
-                    # 2. 安全拒绝
-                    if result.get("sql") == "UNABLE_TO_ANSWER":
+                    # 2. 非数据查询 → 直接返回文本
+                    if sc_result.get("type") != "data_query":
+                        reply = sc_result.get("answer", "抱歉，我无法回答这个问题。")
+                        _append_session(session_id, "assistant", reply)
+                        for i in range(0, len(reply), 10):
+                            yield f"data: {json.dumps({'type': 'text', 'content': reply[i:i+10]}, ensure_ascii=False)}\n\n"
+                            time.sleep(0.03)
+                        yield f"data: {json.dumps({'type': 'done', 'session_id': session_id}, ensure_ascii=False)}\n\n"
+                        return
+
+                    # 3. 数据查询：执行 SQL + 解读（兼容 smart_chat 只返回 sql）
+                    sql = sc_result.get("sql", "")
+                    if not sql or sql == "UNABLE_TO_ANSWER":
                         reply = "抱歉，我目前只能回答数据分析相关的问题。"
                         _append_session(session_id, "assistant", reply)
                         yield f"data: {json.dumps({'type': 'text', 'content': reply}, ensure_ascii=False)}\n\n"
                         yield f"data: {json.dumps({'type': 'done', 'session_id': session_id}, ensure_ascii=False)}\n\n"
                         return
 
-                    # 3. 执行 SQL
                     yield f"data: {json.dumps({'type': 'text', 'content': '正在查询数据...'}, ensure_ascii=False)}\n\n"
-                    df = _query(result["sql"])
-
-                    # 4. 解读结果
-                    answer = _explain_result(contextual_message, result["sql"], df)
+                    df = _query(sql)
+                    answer = _explain_result(contextual_message, sql, df)
                     _append_session(session_id, "assistant", answer)
                     yield f"data: {json.dumps({'type': 'text', 'content': answer}, ensure_ascii=False)}\n\n"
 
-                    # 5. 图表事件（SQL 结果为表结构时附带）
                     chart = _df_to_chart(df)
                     if chart:
                         yield f"data: {json.dumps({'type': 'chart', **chart}, ensure_ascii=False)}\n\n"
@@ -161,6 +201,34 @@ def chat():
 
                 except Exception as e:
                     logger.error("NL2SQL 链路异常: %s", traceback.format_exc())
+                    reply = f"分析出错：{e}"
+                    _append_session(session_id, "assistant", reply)
+                    yield f"data: {json.dumps({'type': 'text', 'content': reply}, ensure_ascii=False)}\n\n"
+                    yield f"data: {json.dumps({'type': 'done', 'session_id': session_id}, ensure_ascii=False)}\n\n"
+                    return
+
+            # ── smart_chat 不可用但 generate_sql 可用时降级 ──
+            if _generate_sql and _query and _explain_result:
+                try:
+                    result = _generate_sql(contextual_message)
+                    if result.get("sql") == "UNABLE_TO_ANSWER":
+                        reply = "抱歉，我目前只能回答数据分析相关的问题。"
+                        _append_session(session_id, "assistant", reply)
+                        yield f"data: {json.dumps({'type': 'text', 'content': reply}, ensure_ascii=False)}\n\n"
+                        yield f"data: {json.dumps({'type': 'done', 'session_id': session_id}, ensure_ascii=False)}\n\n"
+                        return
+                    yield f"data: {json.dumps({'type': 'text', 'content': '正在查询数据...'}, ensure_ascii=False)}\n\n"
+                    df = _query(result["sql"])
+                    answer = _explain_result(contextual_message, result["sql"], df)
+                    _append_session(session_id, "assistant", answer)
+                    yield f"data: {json.dumps({'type': 'text', 'content': answer}, ensure_ascii=False)}\n\n"
+                    chart = _df_to_chart(df)
+                    if chart:
+                        yield f"data: {json.dumps({'type': 'chart', **chart}, ensure_ascii=False)}\n\n"
+                    yield f"data: {json.dumps({'type': 'done', 'session_id': session_id}, ensure_ascii=False)}\n\n"
+                    return
+                except Exception as e:
+                    logger.error("NL2SQL 降级链路异常: %s", traceback.format_exc())
                     reply = f"分析出错：{e}"
                     _append_session(session_id, "assistant", reply)
                     yield f"data: {json.dumps({'type': 'text', 'content': reply}, ensure_ascii=False)}\n\n"
@@ -184,7 +252,7 @@ def _df_to_chart(df):
     """把 SQL 结果 DataFrame 转成 chart 事件（对齐 D 前端 ai_chat.js buildChartOption）。
 
     返回格式：{chartType, data: {categories, values}} 或 {chartType, data: {labels, counts}}（饼图）
-    自动推断图表类型：行数 > 8 → line；列数=2 且无趋势→ bar；可传入 chartType 覆盖。
+    自动推断：行数≤5且2列且首列非数值 → pie；行数>8 → line；其他 → bar。
     """
     if df is None or getattr(df, "empty", True) or len(df.columns) < 2:
         return None
@@ -193,13 +261,15 @@ def _df_to_chart(df):
     for c in cols[1:]:
         if pd.api.types.is_numeric_dtype(df[c]):
             values = [float(v) if pd.notna(v) else 0.0 for v in df[c].tolist()[:20]]
-            # 简单启发式：数据点多→折线；少→柱状
+            # 饼图：类别少 + 首列为标签名 → pie
+            if len(values) <= 5 and not pd.api.types.is_numeric_dtype(df[cols[0]]):
+                return {
+                    "chartType": "pie",
+                    "data": {"labels": categories, "counts": values},
+                }
             chart_type = "line" if len(values) > 8 else "bar"
             return {
                 "chartType": chart_type,
-                "data": {
-                    "categories": categories,
-                    "values": values,
-                },
+                "data": {"categories": categories, "values": values},
             }
     return None

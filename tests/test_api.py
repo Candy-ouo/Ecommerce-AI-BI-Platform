@@ -206,12 +206,9 @@ class TestTrend:
         assert len(data["dates"]) <= 7
 
     def test_days_non_integer(self, client):
-        """非整数 days：int('abc') → ValueError → 500"""
-        try:
-            r = client.get("/api/trend/active?days=abc")
-            assert r.status_code == 500
-        except ValueError:
-            pass
+        """非整数 days：参数校验应返回 400"""
+        r = client.get("/api/trend/active?days=abc")
+        assert r.status_code == 400
 
     def test_no_days_param_uses_default_7(self, client):
         data = client.get("/api/trend/active").get_json()["data"]
@@ -326,7 +323,7 @@ class TestFunnel:
     @pytest.mark.smoke
     def test_smoke_values(self, client):
         """C 漏斗 Mock 仅返回 4 个基础字段"""
-        data = client.get("/api/funnel").get_json()
+        data = client.get("/api/funnel").get_json()["data"]
         assert data["pv"] == 100000
         assert data["fav"] == 35000
         assert data["cart"] == 20000
@@ -356,9 +353,9 @@ class TestRfmDist:
         r = client.get("/api/rfm/dist")
         if r.status_code != 200:
             data = r.get_json()
-            if data and "pyhive" in str(data.get("error", "")):
+            if data and "pyhive" in str(data.get("message", "")):
                 pytest.skip("pyhive not installed, RFM requires Hive connection")
-            if data and "MySQL" in str(data.get("error", "")):
+            if data and "MySQL" in str(data.get("message", "")):
                 pytest.skip("MySQL not available")
         return r
 
@@ -366,39 +363,39 @@ class TestRfmDist:
         assert rfm.status_code == 200
 
     def test_required_fields_present(self, rfm):
-        data = rfm.get_json()
+        data = rfm.get_json()["data"]
         assert "labels" in data, f"Missing labels, got: {data}"
         assert "counts" in data, f"Missing counts, got: {data}"
 
     def test_exactly_8_or_9_categories(self, rfm):
         """A 的 NTILE 可能产生 9 类（含 NULL 组）"""
-        data = rfm.get_json()
+        data = rfm.get_json()["data"]
         assert len(data["labels"]) in (8, 9), \
             f"Expected 8-9 categories, got {len(data['labels'])}"
 
     def test_labels_and_counts_same_length(self, rfm):
-        data = rfm.get_json()
+        data = rfm.get_json()["data"]
         assert len(data["labels"]) == len(data["counts"])
 
     def test_labels_match_expected(self, rfm):
-        data = rfm.get_json()
+        data = rfm.get_json()["data"]
         actual = set(data["labels"])
         unknown = actual - self.EXPECTED_LABELS
         # 允许少量未知标签（如 NULL 组），但不应该全是未知
         assert len(unknown) <= 1, f"Too many unknown labels: {unknown}"
 
     def test_counts_all_positive(self, rfm):
-        data = rfm.get_json()
+        data = rfm.get_json()["data"]
         for c in data["counts"]:
             assert isinstance(c, (int, float))
             assert c > 0
 
     def test_counts_sum_exceeds_zero(self, rfm):
-        data = rfm.get_json()
+        data = rfm.get_json()["data"]
         assert sum(data["counts"]) > 0
 
     def test_labels_no_duplicates(self, rfm):
-        data = rfm.get_json()
+        data = rfm.get_json()["data"]
         assert len(data["labels"]) == len(set(data["labels"]))
 
 
@@ -657,8 +654,8 @@ class TestCrossApi:
         r = client.get("/api/rfm/dist")
         if r.status_code != 200:
             pytest.skip("RFM not available (no Hive connection)")
-        kpi = client.get("/api/kpi/cards").get_json()
-        rfm = r.get_json()
+        kpi = client.get("/api/kpi/cards").get_json()["data"]
+        rfm = r.get_json()["data"]
         rfm_total = sum(rfm["counts"])
         assert rfm_total >= kpi["dau"], \
             f"RFM total ({rfm_total}) should >= DAU ({kpi['dau']})"
