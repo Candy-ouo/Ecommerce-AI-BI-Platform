@@ -1,8 +1,12 @@
-from flask import Blueprint, jsonify, request
+import pandas as pd
+from flask import Blueprint, request
 
+from api._response import ok, fail
 from config import USE_REAL_DATA
 from services.hive_client import query
-from services.queries import trend_active_sql, F_DT, F_TOTAL_UV, F_TOTAL_PV
+from services.queries import (
+    trend_active_sql, F_DT, F_TOTAL_UV, F_TOTAL_PV, F_TOTAL_BUY,
+)
 
 bp = Blueprint("trend", __name__, url_prefix="/api/trend")
 
@@ -18,20 +22,23 @@ def _fmt_date(d):
 @bp.route("/active")
 def active():
     days = int(request.args.get("days", 7))
+    category = request.args.get("category", "").strip()
     if USE_REAL_DATA:
         try:
-            df = query(trend_active_sql(days))
-            df = df.sort_values(F_DT)  # 升序喂图表
+            df = query(trend_active_sql(days, category or None))
+            df = df.sort_values(F_DT)
             dates = [_fmt_date(d) for d in df[F_DT]]
             dau = [int(x) for x in df[F_TOTAL_UV]]
             pv = [int(x) for x in df[F_TOTAL_PV]]
-            return jsonify({"dates": dates, "dau": dau, "pv": pv})
+            orders = [int(x) if pd.notna(x) else 0 for x in df[F_TOTAL_BUY]]
+            return ok({"dates": dates, "dau": dau, "pv": pv, "orders": orders})
         except Exception as e:
-            return jsonify({"error": str(e)}), 500
+            return fail(str(e))
 
-    mock = {
+    # Mock：字段对齐 D 前端 charts.js renderTrend（含 orders 折线）
+    return ok({
         "dates": ["07-14", "07-15", "07-16", "07-17", "07-18", "07-19", "07-20"][:days],
         "dau": [12000, 12500, 11800, 13100, 12900, 13400, 13050][:days],
         "pv": [96000, 99000, 94000, 102000, 100000, 105000, 103000][:days],
-    }
-    return jsonify(mock)
+        "orders": [3800, 3900, 3700, 4100, 4000, 4200, 4100][:days],
+    })

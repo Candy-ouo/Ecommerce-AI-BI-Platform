@@ -36,9 +36,17 @@ logger = logging.getLogger(__name__)
 # ============================================================
 
 SYSTEM_PROMPT = """# Role
-You are a Senior Data Engineer at a large e-commerce company.
-You write production-grade Hive SQL every day.
-Your SQL is always correct, partition-aware, and ready to execute.
+You are a Senior Data Engineer and E-commerce Analyst at a large e-commerce company.
+You write production-grade Hive SQL and provide expert business analysis.
+
+# E-commerce Knowledge Base
+- 移动电商转化率正常范围 2-5%，浏览→加购约 3-8%，加购→购买约 30-50%
+- DAU 周规律：周末高、周中低；促销活动可提升 DAU 30-50%
+- 爆款特征：加购率 >10% 且加购→购买转化 >40%
+- 流失信号：用户 7 天无任何行为或 3 天无购买
+- 新品观察窗口：上线前 3 天是关键判断期
+- 高价值用户：RFM 中 R 近 + F 高（>5 次购买）+ M 广（>3 类商品）
+- 行为漏斗：浏览→收藏约 30-40% 正常，收藏→加购 50-70%，加购→购买 35-55%
 
 # Context
 - Database: ecommerce_bi
@@ -70,6 +78,56 @@ IF the question cannot be answered with available data, respond: UNABLE_TO_ANSWE
 - No date specified → default dt='2014-12-18'
 - Question is not about data analysis → respond UNABLE_TO_ANSWER
 - Metric or column doesn't exist → respond UNABLE_TO_ANSWER"""
+
+
+# ============================================================
+# 意图分类 Prompt（混合模式）
+# ============================================================
+
+INTENT_PROMPT = """Classify the user's message into EXACTLY ONE category.
+Reply with ONLY the category code: data_query, general_chat, ecommerce_knowledge, or off_topic.
+
+- data_query: needs database query to answer (numbers, trends, rankings, funnel, KPI, statistics)
+- general_chat: greetings, thanks, self-introduction, casual talk
+- ecommerce_knowledge: asking for advice, best practices, or industry knowledge about e-commerce operations
+- off_topic: completely unrelated to e-commerce or data
+
+Examples:
+"你好" → general_chat
+"最近7天DAU趋势" → data_query
+"转化率低怎么优化" → ecommerce_knowledge
+"今天天气怎么样" → off_topic
+"购买量最高的类目" → data_query
+"谢谢你" → general_chat
+
+User message: {question}
+Category:"""
+
+
+# ============================================================
+# 闲聊/知识问答 Prompt
+# ============================================================
+
+CHAT_PROMPT = """# Role
+You are a friendly e-commerce AI assistant. You can chat casually and answer e-commerce domain questions.
+When asked about operations best practices, give actionable advice based on e-commerce industry standards.
+
+# E-commerce Knowledge
+- 移动电商转化率 2-5% 正常，可通过优化落地页、简化支付流程提升
+- 用户留存：次日留存 30-40% 算良好，7 日留存 15-25%
+- 爆款打造：选品→测款(3天)→放量→维护，关键看加购率和转化率
+- 促销策略：满减/优惠券/限时折扣，注意避免过度依赖促销伤害复购
+- 商品推荐：协同过滤适合冷启动后阶段，新用户可用热度排行
+- RFM 分层运营：重要价值用户→VIP服务，重要挽留用户→定向召回，新锐潜力→成长激励
+
+# Rules
+1. Answer in friendly Chinese, 2-6 sentences.
+2. Use e-commerce terms naturally (DAU, 转化率, 加购, 漏斗).
+3. If you don't know something, say so honestly.
+4. Keep it practical and actionable, not academic.
+
+User: {question}
+Assistant:"""
 
 
 # ============================================================
@@ -273,6 +331,49 @@ def _clean_sql(raw: str) -> str:
 # ============================================================
 # 公共接口
 # ============================================================
+
+# ============================================================
+# 智能路由入口（混合模式）
+# ============================================================
+
+def smart_chat(question: str) -> dict:
+    """
+    智能对话入口：自动识别意图，路由到不同处理路径。
+
+    Returns:
+        {
+            "type": "data_query" | "general_chat" | "ecommerce_knowledge" | "off_topic",
+            "answer": "..."    # 闲聊/知识/拒绝的文本回答
+            "sql": "..."       # 仅 data_query 有值
+        }
+    """
+    llm = get_llm_client()
+
+    # 1. 意图分类
+    raw = llm.chat(INTENT_PROMPT.format(question=question), temperature=0.0)
+    intent = raw.strip().lower()
+    logger.info("Intent: %s → %s", question[:50], intent)
+
+    # 2. 路由
+    if intent == "data_query":
+        result = generate_sql(question)
+        return {"type": "data_query", "sql": result["sql"], "answer": None}
+
+    elif intent == "general_chat":
+        answer = llm.chat(CHAT_PROMPT.format(question=question), temperature=0.6)
+        return {"type": "general_chat", "sql": None, "answer": answer}
+
+    elif intent == "ecommerce_knowledge":
+        answer = llm.chat(CHAT_PROMPT.format(question=question), temperature=0.5)
+        return {"type": "ecommerce_knowledge", "sql": None, "answer": answer}
+
+    else:  # off_topic or unknown
+        return {
+            "type": "off_topic",
+            "sql": None,
+            "answer": "抱歉，我是电商数据分析助手，主要回答数据查询和电商运营相关问题。您可以试试问我'最近7天的DAU趋势'或'转化率低怎么优化'。",
+        }
+
 
 def generate_sql(
     question: str,

@@ -20,7 +20,6 @@ def get_rfm():
     对齐 B 的 rfm_model.py 产出列：rfm_result 表含 rfm_label 列，
     每行一个用户，需要按标签聚合 COUNT。
     """
-    # TODO(Day2): 接 A 的 ADS 层 rfm 结果表
     with get_connection() as conn:
         with conn.cursor() as cur:
             cur.execute(
@@ -37,7 +36,6 @@ def get_recommend(user_id: int, limit: int = 10):
     B 的 recommender.py 产出 data/recommend_result.csv，导入 MySQL 后表名 expects 为 recommends。
     若表尚未包含 reason 列，自动降级只查 item_id/score。
     """
-    # TODO(Day2): 接 B 的 recommender 产出表
     with get_connection() as conn:
         with conn.cursor() as cur:
             try:

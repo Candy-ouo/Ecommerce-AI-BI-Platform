@@ -7,7 +7,9 @@ DB_ENGINE=duckdb 为本地兜底（无 Hive 环境时开发调试用），不影
 import os
 from dotenv import load_dotenv
 
-load_dotenv()
+# 始终加载 config.py 所在目录（即 backend/）下的 .env
+_ENV_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env")
+load_dotenv(_ENV_PATH)
 
 # ── 主数据库引擎开关 ──────────────────────────────────
 # hive（默认，接 A 在 Hive 建的 DWS/ADS 聚合表） | duckdb（本地兜底）
@@ -46,3 +48,10 @@ FLASK_DEBUG = os.getenv("FLASK_DEBUG", "true").lower() == "true"
 # Day1: False（接口返回 Mock，保证 Demo 可跑、不依赖 A 的表）
 # Day2: A 把聚合表在 Hive 建好 + SCHEMA_CHECKLIST 确认后，改 True 切真 SQL
 USE_REAL_DATA = os.getenv("USE_REAL_DATA", "false").lower() == "true"
+
+# ── API 鉴权（Bearer Token）─────────────────────────
+# 空字符串 → 鉴权关闭；设置后所有 API 需 Authorization: Bearer <token>
+API_TOKEN = os.getenv("API_TOKEN", "")
+
+# ── 晨报推送（钉钉机器人 Webhook）───────────────────
+DINGTALK_WEBHOOK = os.getenv("DINGTALK_WEBHOOK", "")
