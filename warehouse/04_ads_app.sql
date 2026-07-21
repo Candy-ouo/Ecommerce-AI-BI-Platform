@@ -188,14 +188,15 @@ SELECT
     m_score,
     CONCAT(CAST(r_score AS STRING), CAST(f_score AS STRING), CAST(m_score AS STRING)) AS rfm_group,
     CASE
+        WHEN f_value = 0 THEN '浏览型用户'
         WHEN r_score >= 3 AND f_score >= 3 AND m_score >= 3 THEN '重要价值用户'
         WHEN r_score >= 3 AND f_score >= 3 AND m_score <= 2 THEN '重要发展用户'
         WHEN r_score >= 3 AND f_score <= 2 AND m_score >= 3 THEN '重要保持用户'
-        WHEN r_score >= 3 AND f_score <= 2 AND m_score <= 2 THEN '重要挽留用户'
-        WHEN r_score <= 2 AND f_score >= 3 AND m_score >= 3 THEN '一般价值用户'
-        WHEN r_score <= 2 AND f_score >= 3 AND m_score <= 2 THEN '一般发展用户'
-        WHEN r_score <= 2 AND f_score <= 2 AND m_score >= 3 THEN '一般保持用户'
-        WHEN r_score <= 2 AND f_score <= 2 AND m_score <= 2 THEN '一般挽留用户'
+        WHEN r_score >= 3 AND f_score <= 2 AND m_score <= 2 THEN '新锐潜力用户'
+        WHEN r_score <= 2 AND f_score >= 3 AND m_score >= 3 THEN '重要挽留用户'
+        WHEN r_score <= 2 AND f_score >= 3 AND m_score <= 2 THEN '一般价值用户'
+        WHEN r_score <= 2 AND f_score <= 2 AND m_score >= 3 THEN '一般发展用户'
+        WHEN r_score <= 2 AND f_score <= 2 AND m_score <= 2 THEN '低价值用户'
         ELSE '未知'
     END AS rfm_label_cn,
     '2014-12-18' AS dt
@@ -205,7 +206,7 @@ FROM (
         r_value,
         f_value,
         m_value,
-        CASE WHEN r_value <= 1 THEN 3 WHEN r_value <= 3 THEN 2 ELSE 1 END AS r_score,
+        4 - NTILE(3) OVER (ORDER BY r_value ASC) AS r_score,
         NTILE(3) OVER (ORDER BY f_value) AS f_score,
         NTILE(3) OVER (ORDER BY m_value) AS m_score
     FROM (
