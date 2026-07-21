@@ -18,6 +18,7 @@ T_KPI = "ads_daily_kpi"            # 日KPI汇总：dau/orders/conversion_rate/a
 T_PLATFORM_DAY = "dws_platform_day"  # 全站日粒度：uv(=dau)/pv/...
 T_ITEM_DAY = "dws_item_day"        # 商品日粒度：item_id/pv/fav/cart/buy
 T_FUNNEL = "ads_funnel"            # 全站漏斗：pv/fav/cart/buy
+T_RFM = "ads_user_rfm"            # RFM 用户分层（A 路径 Hive 表）
 
 # 字段名（已与 A 的 Docs/schema.md + warehouse/*.sql 对齐）
 F_DT = "dt"
