@@ -3,7 +3,7 @@ from flask import Blueprint, jsonify
 from config import USE_REAL_DATA
 from services.hive_client import query
 from services.queries import (
-    kpi_cards_sql, F_DAU, F_ORDERS, F_CONV, F_AVG_PV,
+    kpi_cards_sql, F_DAU, F_TOTAL_ORDERS, F_BUY_CONVERSION, F_AVG_PV,
 )
 
 bp = Blueprint("kpi", __name__, url_prefix="/api/kpi")
@@ -27,8 +27,8 @@ def cards():
             return jsonify({
                 "dau": dau,
                 "dau_change": round(float(dau_change), 4),
-                "orders": int(today[F_ORDERS]),
-                "conversion_rate": round(float(today[F_CONV]), 4),
+                "orders": int(today[F_TOTAL_ORDERS]),
+                "conversion_rate": round(float(today[F_BUY_CONVERSION]), 4),
                 "avg_pv": round(float(today[F_AVG_PV]), 2),
             })
         except Exception as e:

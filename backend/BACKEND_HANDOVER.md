@@ -2,7 +2,7 @@
 
 负责人：C
 分支：`feature/c-backend`
-最后更新：2026-07-20（同步 B 的 ai_design.md v2.0）
+最后更新：2026-07-21（新增 report 接口、scheduler、rfm/recommend 双模式）
 
 ---
 
@@ -10,26 +10,28 @@
 
 ```
 backend/
-├── app.py                 ← Flask 入口，注册所有 Blueprint，CORS
+├── app.py                 ← Flask 入口，注册所有 Blueprint，CORS，启动 scheduler
 ├── config.py              ← 统一配置（Hive/MySQL/LLM/Flask/数据开关）
+├── scheduler.py           ← APScheduler 定时任务（每天 8:00 触发晨报生成）
 ├── api/
-│   ├── __init__.py        ← Blueprint 注册
+│   ├── __init__.py        ← Blueprint 注册（8 个模块）
 │   ├── kpi.py             ← GET  /api/kpi/cards
 │   ├── trend.py           ← GET  /api/trend/active
 │   ├── top.py             ← GET  /api/top/items
 │   ├── funnel.py          ← GET  /api/funnel
-│   ├── rfm.py             ← GET  /api/rfm/dist
-│   ├── recommend.py       ← GET  /api/recommend?user_id=
-│   └── chat.py            ← POST /api/chat（SSE 流式，待接 B 模块）
+│   ├── rfm.py             ← GET  /api/rfm/dist（已接真实数据链路）
+│   ├── recommend.py       ← GET  /api/recommend?user_id=（已接真实数据链路）
+│   ├── report.py          ← GET  /api/report/latest + /api/report/history
+│   └── chat.py            ← POST /api/chat（SSE 流式，惰性导入 B 模块 + Mock 降级）
 ├── services/
 │   ├── hive_client.py     ← pyhive 查询封装
-│   ├── db.py              ← MySQL 封装（RFM/推荐结果读取）
-│   └── queries.py         ← Hive SQL（顶部常量即 A 需确认的表名/字段名）
+│   ├── db.py              ← MySQL 封装（RFM/推荐/晨报结果读取）
+│   └── queries.py         ← Hive SQL（字段名已对齐 A 的 04_ads_app.sql）
 ├── API.md                 ← 接口详细文档（给 D 联调、B 写 tools.py）
 └── .env.example           ← 环境变量模板（占位符，不含真实 key）
 ```
 
-当前状态：7 个接口全部跑通（Mock 模式），前端可联调；`chat.py` 为 Mock SSE，待 B 的 AI 模块接入。
+当前状态：9 个接口 + 1 个健康检查全部跑通（Mock 模式），前端可联调；`chat.py` 惰性导入 B 模块，失败自动降级 Mock；rfm/recommend 已接 MySQL 真实数据链路。
 
 ---
 
@@ -37,7 +39,7 @@ backend/
 
 ### 2.1 给 D（前端）
 
-> C 的后端 7 个接口已全部跑通（Mock 模式）。文档在 `backend/API.md`。
+> C 的后端 9 个接口已全部跑通（Mock 模式）。文档在 `backend/API.md`。
 > 本地启动：`cd backend && pip install -r requirements.txt && python app.py`，然后访问 `http://localhost:5000/api/kpi/cards` 等即可联调。
 > 接口形状已锁定，按文档对接就行，**尽量不改字段名**。
 
@@ -67,10 +69,10 @@ QWEN_BASE_URL=https://{WorkspaceId}.cn-beijing.maas.aliyuncs.com/compatible-mode
 
 | 用途 | C 假设表名 | C 假设字段 |
 |------|-----------|-----------|
-| 日 KPI | `ads_daily_kpi` | dt, dau, orders, conversion_rate, avg_pv |
-| 全站日 | `dws_platform_day` | dt, dau, pv |
-| 商品日 | `dws_item_day` | dt, item_id, pv, fav, buy |
-| 漏斗 | `ads_funnel` | dt, pv, fav, cart, buy |
+| 日 KPI | `ads_daily_kpi` | dt, dau, total_orders, buy_conversion, avg_pv |
+| 全站日 | `dws_platform_day` | dt, total_uv, total_pv |
+| 商品日 | `dws_item_day` | dt, item_id, pv_cnt, fav_cnt, buy_cnt |
+| 漏斗 | `ads_funnel` | dt, pv_users, fav_users, cart_users, buy_users, pv_to_fav_rate, fav_to_cart_rate, cart_to_buy_rate, pv_to_buy_rate |
 
 > 另外 C 的 `rfm.py` / `recommend.py` 从 **MySQL** 读（B 模型产出、你建表写入），
 > 这两张表（RFM 结果表、推荐结果表）的表名/字段也请一并确认。最终以你的 `docs/schema.md` 为准。
@@ -97,10 +99,11 @@ B 的 `rfm_model.py` 产出 8 类标签（与 C 当前 Mock 命名不同），C 
 > B 的 `rfm_result.csv` 字段：`user_id, R, F, M, R_score, F_score, M_score, rfm_label`
 > C 导入 MySQL 的 `rfm_result` 表后，接口读取 `rfm_label` 作 labels、`COUNT(*)` 作 counts。
 
-### 3.2 推荐结果结构（接真实数据时补 reason）
+### 3.2 推荐结果结构（接真实数据时返回 item_id + score + reason）
 
-B 的 `recommender.py` 产出 `recommend_result.csv` 字段：`user_id, item_id, score`（**无 reason 列**）。
-C 的 `GET /api/recommend` 接真实数据时，`reason` 由 C 自行补全（如 `"协同过滤"`）。
+B 的 `recommender.py`（按 ai_design.md v2.x）产出推荐结果字段：`user_id, item_id, score, reason`。
+`reason` 为 LLM 生成的推荐理由（按 DEV_PLAN 需求）。
+C 的 `GET /api/recommend` 已对齐，返回 `[{item_id, score, reason}]`。
 
 ### 3.3 数据导入 MySQL 参考（B 提供）
 
@@ -167,6 +170,6 @@ answer = explain_result(user_question, result["sql"], df)
 
 | 依赖 | 对方交付后 C 做什么 |
 |------|-------------------|
-| A | 确认表名/字段 → 改 `queries.py` 顶部常量 → `USE_REAL_DATA=true` 切真实数据 |
-| B | `ai/` 模块推送 → `chat.py` 按 3.5 节接入 `generate_sql` + `explain_result`；MySQL 导入 RFM/推荐 CSV |
+| A | 确认表名/字段 → `queries.py` 常量已对齐 `04_ads_app.sql`，待切 `USE_REAL_DATA=true` |
+| B | `ai/morning_report.py` 推送 → `scheduler.py` 接入 `generate_report()`；`ai/` NL2SQL 模块推送 → `chat.py` 惰性导入自动生效 |
 | D | 前端联调反馈 → C 修接口 bug |

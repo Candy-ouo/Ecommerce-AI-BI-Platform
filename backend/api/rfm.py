@@ -1,10 +1,11 @@
 """GET /api/rfm/dist —— RFM 8 类用户占比。
 
-数据来自 MySQL（B 的 rfm_model.py 产出、A 的 ADS 层写入），
-当前返回 Mock，Day 2 后换成 services.db.get_rfm()。
+Real 模式：读 MySQL 中 A/B 写入的 rfm 结果表。
+USE_REAL_DATA=false 或不具备连接时返回 Mock。
 """
 from flask import Blueprint, jsonify
 
+from config import USE_REAL_DATA
 from services.db import get_rfm
 
 bp = Blueprint("rfm", __name__, url_prefix="/api/rfm")
@@ -12,7 +13,15 @@ bp = Blueprint("rfm", __name__, url_prefix="/api/rfm")
 
 @bp.route("/dist")
 def dist():
-    # TODO(Day2): rows = get_rfm()  → 转成 labels/counts
+    if USE_REAL_DATA:
+        try:
+            rows = get_rfm()
+            labels = [r["label"] for r in rows]
+            counts = [r["cnt"] for r in rows]
+            return jsonify({"labels": labels, "counts": counts})
+        except Exception as e:
+            return jsonify({"error": str(e)}), 500
+
     mock = {
         "labels": ["重要价值", "重要发展", "重要保持", "重要挽留",
                    "一般价值", "一般发展", "一般保持", "一般挽留"],

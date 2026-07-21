@@ -2,7 +2,7 @@ from flask import Blueprint, jsonify, request
 
 from config import USE_REAL_DATA
 from services.hive_client import query
-from services.queries import trend_active_sql, F_DT, F_DAU, F_PV
+from services.queries import trend_active_sql, F_DT, F_TOTAL_UV, F_TOTAL_PV
 
 bp = Blueprint("trend", __name__, url_prefix="/api/trend")
 
@@ -23,8 +23,8 @@ def active():
             df = query(trend_active_sql(days))
             df = df.sort_values(F_DT)  # 升序喂图表
             dates = [_fmt_date(d) for d in df[F_DT]]
-            dau = [int(x) for x in df[F_DAU]]
-            pv = [int(x) for x in df[F_PV]]
+            dau = [int(x) for x in df[F_TOTAL_UV]]
+            pv = [int(x) for x in df[F_TOTAL_PV]]
             return jsonify({"dates": dates, "dau": dau, "pv": pv})
         except Exception as e:
             return jsonify({"error": str(e)}), 500

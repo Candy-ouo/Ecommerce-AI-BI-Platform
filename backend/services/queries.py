@@ -19,23 +19,41 @@ T_PLATFORM_DAY = "dws_platform_day"  # 全站日粒度：uv(=dau)/pv/...
 T_ITEM_DAY = "dws_item_day"        # 商品日粒度：item_id/pv/fav/cart/buy
 T_FUNNEL = "ads_funnel"            # 全站漏斗：pv/fav/cart/buy
 
-# 字段名（待 A 确认命名，若不同改这里）：
+# 字段名（已与 A 的 Docs/schema.md + warehouse/*.sql 对齐）
 F_DT = "dt"
-F_DAU = "dau"          # 日活；若 A 命名为 uv 则改 "uv"
-F_PV = "pv"
-F_ORDERS = "orders"
-F_CONV = "conversion_rate"
+
+# ---- ads_daily_kpi 字段 ----
+F_DAU = "dau"
+F_TOTAL_ORDERS = "total_orders"
+F_BUY_CONVERSION = "buy_conversion"
 F_AVG_PV = "avg_pv"
+
+# ---- dws_platform_day 字段 ----
+F_TOTAL_UV = "total_uv"      # 日活（dws 层叫 total_uv）
+F_TOTAL_PV = "total_pv"
+
+# ---- dws_item_day 字段 ----
 F_ITEM = "item_id"
-F_FAV = "fav"
-F_CART = "cart"
-F_BUY = "buy"
+F_PV_CNT = "pv_cnt"
+F_FAV_CNT = "fav_cnt"
+F_CART_CNT = "cart_cnt"
+F_BUY_CNT = "buy_cnt"
+
+# ---- ads_funnel 字段 ----
+F_PV_USERS = "pv_users"
+F_FAV_USERS = "fav_users"
+F_CART_USERS = "cart_users"
+F_BUY_USERS = "buy_users"
+F_PV_TO_FAV_RATE = "pv_to_fav_rate"
+F_FAV_TO_CART_RATE = "fav_to_cart_rate"
+F_CART_TO_BUY_RATE = "cart_to_buy_rate"
+F_PV_TO_BUY_RATE = "pv_to_buy_rate"
 
 
 def kpi_cards_sql():
-    """最近 2 天 KPI（dau/orders/conversion_rate/avg_pv），环比由 Python 算。"""
+    """最近 2 天 KPI（dau/total_orders/buy_conversion/avg_pv），环比由 Python 算。"""
     return f"""
-    SELECT {F_DT}, {F_DAU}, {F_ORDERS}, {F_CONV}, {F_AVG_PV}
+    SELECT {F_DT}, {F_DAU}, {F_TOTAL_ORDERS}, {F_BUY_CONVERSION}, {F_AVG_PV}
     FROM {T_KPI}
     ORDER BY {F_DT} DESC
     LIMIT 2
@@ -46,7 +64,7 @@ def trend_active_sql(days: int = 7):
     """最近 days 天全站日活 + PV（升序喂折线图）。"""
     days = int(days)
     return f"""
-    SELECT {F_DT}, {F_DAU}, {F_PV}
+    SELECT {F_DT}, {F_TOTAL_UV}, {F_TOTAL_PV}
     FROM {T_PLATFORM_DAY}
     ORDER BY {F_DT} DESC
     LIMIT {days}
@@ -59,9 +77,9 @@ def top_items_sql(limit: int = 10, sort_by: str = "pv"):
         sort_by = "pv"
     return f"""
     SELECT {F_ITEM} AS item_id,
-           SUM({F_PV}) AS pv,
-           SUM({F_FAV}) AS fav,
-           SUM({F_BUY}) AS buy
+           SUM({F_PV_CNT}) AS pv,
+           SUM({F_FAV_CNT}) AS fav,
+           SUM({F_BUY_CNT}) AS buy
     FROM {T_ITEM_DAY}
     GROUP BY {F_ITEM}
     ORDER BY {sort_by} DESC
@@ -70,10 +88,15 @@ def top_items_sql(limit: int = 10, sort_by: str = "pv"):
 
 
 def funnel_sql():
-    """全站转化漏斗各环节人数（取最新一天的全站行）。"""
+    """全站转化漏斗各环节人数 + 转化率（取最新一天的全站汇总行）。"""
     return f"""
-    SELECT {F_PV} AS pv, {F_FAV} AS fav, {F_CART} AS cart, {F_BUY} AS buy
+    SELECT {F_PV_USERS} AS pv, {F_FAV_USERS} AS fav, {F_CART_USERS} AS cart, {F_BUY_USERS} AS buy,
+           {F_PV_TO_FAV_RATE} AS pv_to_fav_rate,
+           {F_FAV_TO_CART_RATE} AS fav_to_cart_rate,
+           {F_CART_TO_BUY_RATE} AS cart_to_buy_rate,
+           {F_PV_TO_BUY_RATE} AS pv_to_buy_rate
     FROM {T_FUNNEL}
+    WHERE item_category IS NULL
     ORDER BY {F_DT} DESC
     LIMIT 1
     """
