@@ -38,12 +38,19 @@ TIMEOUT = 10  # 秒
 
 
 def _get(endpoint: str, params: dict = None) -> dict:
-    """统一 GET 请求封装，返回 JSON"""
+    """统一 GET 请求封装。
+
+    C 的 API 统一返回 {code, message, data}，本函数解包返回 data 层业务数据。
+    若 code != 0 或异常，返回 {error: ...}。
+    """
     url = f"{API_BASE}{endpoint}"
     try:
         resp = requests.get(url, params=params, timeout=TIMEOUT)
         resp.raise_for_status()
-        return resp.json()
+        body = resp.json()
+        if body.get("code") == 0:
+            return body.get("data", {})
+        return {"error": body.get("message", f"API returned code={body.get('code')}")}
     except requests.exceptions.ConnectionError:
         logger.warning("Cannot connect to %s (C's backend not running?)", API_BASE)
         return {"error": f"无法连接后端服务 ({API_BASE})"}
@@ -61,8 +68,9 @@ def get_daily_kpi() -> dict:
     获取今日核心经营指标。
 
     Returns:
-        {dau, dau_change, orders, conversion_rate, avg_pv}
-        dau_change 为环比变化率（0.03 = +3%）
+        {dau, dau_change, orders, orders_change, conversion_rate, conversion_change,
+         avg_pv, avg_pv_change, ai_insight?}
+        各 _change 为环比变化率（0.03 = +3%）；ai_insight 为 AI 分析文本（仅 LLM 可用时存在）
     """
     return _get("/api/kpi/cards")
 
@@ -79,7 +87,7 @@ def get_active_trend(days: int = 7) -> dict:
         days: 天数，默认 7
 
     Returns:
-        {dates: ["12-12",...], dau: [8230,...], pv: [385000,...]}
+        {dates: ["12-12",...], dau: [8230,...], pv: [385000,...], orders: [3900,...]}
     """
     return _get("/api/trend/active", {"days": days})
 
@@ -108,10 +116,10 @@ def get_top_items(limit: int = 10, sort_by: str = "pv") -> dict:
 
 def get_funnel() -> dict:
     """
-    获取全站转化漏斗数据（浏览 → 收藏 → 加购 → 购买 各环节人数）。
+    获取全站转化漏斗数据（浏览 → 收藏 → 加购 → 购买 各环节人数 + 各级转化率）。
 
     Returns:
-        {pv, fav, cart, buy}
+        {pv, fav, cart, buy, pv_to_fav_rate, fav_to_cart_rate, cart_to_buy_rate, pv_to_buy_rate}
     """
     return _get("/api/funnel")
 
@@ -122,10 +130,10 @@ def get_funnel() -> dict:
 
 def get_rfm_distribution() -> dict:
     """
-    获取 RFM 8 类用户分层的人数分布。
+    获取 RFM 9 类用户分层的人数分布（含"浏览型用户"）。
 
     Returns:
-        {labels: ["重要价值",...], counts: [1200,...]}
+        {labels: ["重要价值用户",...], counts: [1200,...]}
     """
     return _get("/api/rfm/dist")
 
@@ -157,7 +165,7 @@ TOOL_DEFINITIONS = [
     },
     {
         "name": "get_rfm_distribution",
-        "description": "获取RFM用户价值分层的人数分布（8类标签）。用于回答'用户分层'、'高价值用户占比'、'用户结构'等问题。",
+        "description": "获取RFM用户价值分层的人数分布（9类标签，含浏览型用户）。用于回答'用户分层'、'高价值用户占比'、'用户结构'等问题。",
         "function": get_rfm_distribution,
     },
 ]
