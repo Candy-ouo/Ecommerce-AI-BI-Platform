@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>电商用户行为分析与 AI 智能 BI 平台</title>
+  <link rel="stylesheet" href="css/dashboard.css" />
+  <!-- ECharts CDN：后续可换成本地文件 -->
+  <script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"></script>
+</head>
+<body>
+  <div class="dashboard">
+    <!-- 顶部标题栏 -->
+    <header class="header">
+      <h1>电商用户行为分析与 AI 智能 BI 平台</h1>
+      <div class="header-meta">
+        <span id="clock"></span>
+        <span class="status-dot" id="status-dot" title="数据连接状态"></span>
+      </div>
+    </header>
+
+    <!-- KPI 指标卡（由 charts.js 动态渲染 HTML 数字） -->
+    <section class="kpi-cards" id="kpi-cards"></section>
+
+    <!-- 左侧：4 个图表网格 -->
+    <main class="grid">
+      <div class="card chart-card">
+        <div class="card-title">
+          <span>日活跃用户趋势</span>
+          <select id="trend-category" class="mini-select"></select>
+        </div>
+        <div id="chart-trend" class="chart"></div>
+      </div>
+      <div class="card chart-card">
+        <div class="card-title">
+          <span>商品热度 Top10</span>
+          <div class="mini-toggle" id="top-toggle">
+            <button type="button" data-metric="pv" class="active">PV热度</button>
+            <button type="button" data-metric="buy">购买热度</button>
+          </div>
+        </div>
+        <div id="chart-top" class="chart"></div>
+      </div>
+      <div class="card chart-card">
+        <div class="card-title">转化漏斗</div>
+        <div id="chart-funnel" class="chart"></div>
+      </div>
+      <div class="card chart-card">
+        <div class="card-title">RFM 用户分布</div>
+        <div id="chart-rfm" class="chart"></div>
+      </div>
+    </main>
+
+    <!-- 右侧：AI 晨报 + 个性化推荐 + 历史时间轴 -->
+    <aside class="report-panel" id="report-panel">
+      <!-- 最新晨报卡片 -->
+      <div class="card report-card">
+        <div class="card-title">📰 AI 每日晨报</div>
+        <div class="report-date" id="report-date"></div>
+        <div class="report-summary" id="report-summary"></div>
+        <div class="report-highlights" id="report-highlights"></div>
+      </div>
+
+      <!-- 个性化推荐列表 -->
+      <div class="card recommend-card">
+        <div class="card-title">
+          <span>🎯 个性化推荐</span>
+          <div class="rec-user-input">
+            <input type="text" id="rec-user-input" placeholder="输入用户ID" class="mini-select" />
+            <button id="rec-refresh" class="mini-btn">刷新</button>
+          </div>
+        </div>
+        <div class="rec-user-label">当前用户：<span id="recommend-user">--</span></div>
+        <div class="recommend-list" id="recommend-list"></div>
+      </div>
+
+      <!-- 历史报告时间轴 -->
+      <div class="card report-history">
+        <div class="card-title">📚 历史报告</div>
+        <ul class="timeline" id="report-timeline"></ul>
+      </div>
+    </aside>
+
+  </div>
+
+  <!-- 悬浮 AI 助手入口：点击打开独立聊天页 -->
+  <a href="chat.html" class="ai-float-btn" title="AI 智能助手">
+    <div class="ai-avatar">
+      <svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <linearGradient id="faceGrad" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0%" stop-color="#ffe6e6"/>
+            <stop offset="100%" stop-color="#ffd1d9"/>
+          </linearGradient>
+        </defs>
+        <circle cx="50" cy="50" r="50" fill="url(#faceGrad)"/>
+        <ellipse cx="50" cy="55" rx="22" ry="18" fill="#ff9999" opacity="0.25"/>
+        <circle cx="36" cy="46" r="5" fill="#4a3b3b"/>
+        <circle cx="64" cy="46" r="5" fill="#4a3b3b"/>
+        <path d="M42 64 Q50 70 58 64" stroke="#d66d8e" stroke-width="3" fill="none" stroke-linecap="round"/>
+        <ellipse cx="30" cy="56" rx="5" ry="3" fill="#ff9eb5" opacity="0.6"/>
+        <ellipse cx="70" cy="56" rx="5" ry="3" fill="#ff9eb5" opacity="0.6"/>
+        <path d="M20 38 Q25 25 38 28" stroke="#6b4c4c" stroke-width="4" fill="none" stroke-linecap="round"/>
+        <path d="M80 38 Q75 25 62 28" stroke="#6b4c4c" stroke-width="4" fill="none" stroke-linecap="round"/>
+      </svg>
+    </div>
+    <span class="ai-float-pulse"></span>
+  </a>
+
+  <!-- JS：大屏页面不需要 ai_chat.js，它在 chat.html 独立加载 -->
+  <script src="js/config.js"></script>
+  <script src="js/api.js"></script>
+  <script src="js/charts.js"></script>
+  <script src="js/main.js"></script>
+</body>
+</html>
