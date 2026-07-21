@@ -29,8 +29,33 @@ def get_recommend(user_id: int, limit: int = 10):
     with get_connection() as conn:
         with conn.cursor() as cur:
             cur.execute(
-                "SELECT item_name, score, reason FROM recommend_result "
+                "SELECT item_id, score FROM recommend_result "
                 "WHERE user_id=%s ORDER BY score DESC LIMIT %s",
                 (user_id, limit),
+            )
+            return cur.fetchall()
+
+
+def get_report_latest():
+    """读最新一期晨报（供 /api/report/latest）。"""
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT report_date, content, anomalies "
+                "FROM morning_report ORDER BY report_date DESC LIMIT 1"
+            )
+            return cur.fetchone()
+
+
+def get_report_history(days: int = 7):
+    """读最近 N 天晨报列表（供 /api/report/history）。"""
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT report_date, content, anomalies "
+                "FROM morning_report "
+                "WHERE report_date >= DATE_SUB(CURDATE(), INTERVAL %s DAY) "
+                "ORDER BY report_date DESC",
+                (int(days),),
             )
             return cur.fetchall()

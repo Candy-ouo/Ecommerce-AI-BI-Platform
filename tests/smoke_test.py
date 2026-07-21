@@ -1,4 +1,4 @@
-"""7 接口冒烟测试：启动 Flask → 逐接口验证 → 输出结果"""
+"""9 接口冒烟测试：启动 Flask → 逐接口验证 → 输出结果"""
 import subprocess, time, requests, sys
 
 BASE = "http://localhost:5000"
@@ -16,23 +16,28 @@ passed = 0
 failed = 0
 
 tests = [
-    ("GET", "/api/kpi/cards", None, ["cards"]),
-    ("GET", "/api/trend/active", None, ["dates"]),
-    ("GET", "/api/top/items?limit=3&sort_by=pv", None, ["items"]),
-    ("GET", "/api/funnel", None, ["stages"]),
-    ("GET", "/api/rfm/dist", None, ["labels"]),
-    ("GET", "/api/recommend?user_id=123", None, ["items"]),
+    ("GET", "/api/kpi/cards", None, ["dau"], "dict"),
+    ("GET", "/api/trend/active", None, ["dates"], "dict"),
+    ("GET", "/api/top/items?limit=3&sort_by=pv", None, ["items"], "dict"),
+    ("GET", "/api/funnel", None, ["pv"], "dict"),
+    ("GET", "/api/rfm/dist", None, ["labels"], "dict"),
+    ("GET", "/api/recommend?user_id=123", None, ["items"], "dict"),
+    ("GET", "/api/report/latest", None, ["date"], "dict"),
+    ("GET", "/api/report/history?days=3", None, ["date"], "list"),
 ]
 
-print("=== 7 接口冒烟测试 ===\n")
-for method, path, body, expected_keys in tests:
+print("=== 9 接口冒烟测试 ===\n")
+for method, path, body, expected_keys, resp_type in tests:
     try:
         if method == "GET":
             r = requests.get(f"{BASE}{path}", timeout=5)
         else:
             r = requests.post(f"{BASE}{path}", json=body, timeout=5)
         data = r.json()
-        ok = all(k in data for k in expected_keys)
+        if resp_type == "list":
+            ok = isinstance(data, list) and len(data) > 0 and all(k in data[0] for k in expected_keys)
+        else:
+            ok = all(k in data for k in expected_keys)
         if r.status_code == 200 and ok:
             passed += 1
             print(f"\033[92m[PASS]\033[0m {method} {path} → {r.status_code} | keys={list(data.keys())}")
