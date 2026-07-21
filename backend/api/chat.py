@@ -159,64 +159,69 @@ def chat():
         # 记录用户消息
         _append_session(session_id, "user", message)
 
-        # ── 走真实 NL2SQL（B 的 smart_chat 混合模式）──
-        if USE_REAL_DATA:
-            _lazy_import()
-            if _smart_chat and _query and _explain_result:
-                try:
-                    # 1. B 的混合路由：意图分类 + SQL 生成/闲聊/知识问答
-                    sc_result = _smart_chat(contextual_message)
+        # ── 始终尝试 B 的 smart_chat（非数据问题无需 Hive）──
+        _lazy_import()
+        if _smart_chat:
+            try:
+                # 1. B 的混合路由：意图分类 + SQL 生成/闲聊/知识问答
+                sc_result = _smart_chat(contextual_message)
 
-                    # 2. 非数据查询 → 直接返回文本
-                    if sc_result.get("type") != "data_query":
-                        reply = sc_result.get("answer", "抱歉，我无法回答这个问题。")
-                        _append_session(session_id, "assistant", reply)
-                        for i in range(0, len(reply), 10):
-                            yield f"data: {json.dumps({'type': 'text', 'content': reply[i:i+10]}, ensure_ascii=False)}\n\n"
-                            time.sleep(0.03)
-                        yield f"data: {json.dumps({'type': 'done', 'session_id': session_id}, ensure_ascii=False)}\n\n"
-                        return
-
-                    # 3. 数据查询：执行 SQL + 解读（兼容 smart_chat 只返回 sql）
-                    sql = sc_result.get("sql", "")
-                    if not sql or sql == "UNABLE_TO_ANSWER":
-                        reply = "抱歉，我目前只能回答数据分析相关的问题。"
-                        _append_session(session_id, "assistant", reply)
-                        yield f"data: {json.dumps({'type': 'text', 'content': reply}, ensure_ascii=False)}\n\n"
-                        yield f"data: {json.dumps({'type': 'done', 'session_id': session_id}, ensure_ascii=False)}\n\n"
-                        return
-
-                    yield f"data: {json.dumps({'type': 'text', 'content': '正在查询数据...'}, ensure_ascii=False)}\n\n"
-                    df = _query(sql)
-                    answer = _explain_result(contextual_message, sql, df)
-                    _append_session(session_id, "assistant", answer)
-                    yield f"data: {json.dumps({'type': 'text', 'content': answer}, ensure_ascii=False)}\n\n"
-
-                    chart = _df_to_chart(df)
-                    if chart:
-                        yield f"data: {json.dumps({'type': 'chart', **chart}, ensure_ascii=False)}\n\n"
-
+                # 2. 非数据查询 → 直接返回文本（闲聊/知识问答无需 Hive）
+                if sc_result.get("type") != "data_query":
+                    reply = sc_result.get("answer", "抱歉，我无法回答这个问题。")
+                    _append_session(session_id, "assistant", reply)
+                    for i in range(0, len(reply), 10):
+                        yield f"data: {json.dumps({'type': 'text', 'content': reply[i:i+10]}, ensure_ascii=False)}\n\n"
+                        time.sleep(0.03)
                     yield f"data: {json.dumps({'type': 'done', 'session_id': session_id}, ensure_ascii=False)}\n\n"
                     return
 
-                except Exception as e:
-                    logger.error("NL2SQL 链路异常: %s", traceback.format_exc())
-                    reply = f"分析出错：{e}"
+                # 3. 数据查询
+                sql = sc_result.get("sql", "")
+                if not sql or sql == "UNABLE_TO_ANSWER":
+                    reply = "抱歉，我目前只能回答数据分析相关的问题。"
                     _append_session(session_id, "assistant", reply)
                     yield f"data: {json.dumps({'type': 'text', 'content': reply}, ensure_ascii=False)}\n\n"
                     yield f"data: {json.dumps({'type': 'done', 'session_id': session_id}, ensure_ascii=False)}\n\n"
                     return
 
-            # ── smart_chat 不可用但 generate_sql 可用时降级 ──
-            if _generate_sql and _query and _explain_result:
-                try:
-                    result = _generate_sql(contextual_message)
-                    if result.get("sql") == "UNABLE_TO_ANSWER":
-                        reply = "抱歉，我目前只能回答数据分析相关的问题。"
-                        _append_session(session_id, "assistant", reply)
-                        yield f"data: {json.dumps({'type': 'text', 'content': reply}, ensure_ascii=False)}\n\n"
-                        yield f"data: {json.dumps({'type': 'done', 'session_id': session_id}, ensure_ascii=False)}\n\n"
-                        return
+                # 4. 执行 SQL + 解读（真实模式）或返回 SQL（Mock 模式给 B 看效果）
+                if USE_REAL_DATA and _query and _explain_result:
+                    yield f"data: {json.dumps({'type': 'text', 'content': '正在查询数据...'}, ensure_ascii=False)}\n\n"
+                    df = _query(sql)
+                    answer = _explain_result(contextual_message, sql, df)
+                    _append_session(session_id, "assistant", answer)
+                    yield f"data: {json.dumps({'type': 'text', 'content': answer}, ensure_ascii=False)}\n\n"
+                    chart = _df_to_chart(df)
+                    if chart:
+                        yield f"data: {json.dumps({'type': 'chart', **chart}, ensure_ascii=False)}\n\n"
+                else:
+                    reply = f"【AI 已理解您的问题】\n生成 SQL：\n{sql}\n\n（Mock 模式未执行查询，切换 USE_REAL_DATA=true 后自动执行并解读）"
+                    _append_session(session_id, "assistant", reply)
+                    yield f"data: {json.dumps({'type': 'text', 'content': reply}, ensure_ascii=False)}\n\n"
+
+                yield f"data: {json.dumps({'type': 'done', 'session_id': session_id}, ensure_ascii=False)}\n\n"
+                return
+
+            except Exception as e:
+                logger.error("NL2SQL 链路异常: %s", traceback.format_exc())
+                reply = f"分析出错：{e}"
+                _append_session(session_id, "assistant", reply)
+                yield f"data: {json.dumps({'type': 'text', 'content': reply}, ensure_ascii=False)}\n\n"
+                yield f"data: {json.dumps({'type': 'done', 'session_id': session_id}, ensure_ascii=False)}\n\n"
+                return
+
+        # ── smart_chat 不可用但 generate_sql 可用时降级 ──
+        if _generate_sql:
+            try:
+                result = _generate_sql(contextual_message)
+                if result.get("sql") == "UNABLE_TO_ANSWER":
+                    reply = "抱歉，我目前只能回答数据分析相关的问题。"
+                    _append_session(session_id, "assistant", reply)
+                    yield f"data: {json.dumps({'type': 'text', 'content': reply}, ensure_ascii=False)}\n\n"
+                    yield f"data: {json.dumps({'type': 'done', 'session_id': session_id}, ensure_ascii=False)}\n\n"
+                    return
+                if USE_REAL_DATA and _query and _explain_result:
                     yield f"data: {json.dumps({'type': 'text', 'content': '正在查询数据...'}, ensure_ascii=False)}\n\n"
                     df = _query(result["sql"])
                     answer = _explain_result(contextual_message, result["sql"], df)
@@ -225,18 +230,22 @@ def chat():
                     chart = _df_to_chart(df)
                     if chart:
                         yield f"data: {json.dumps({'type': 'chart', **chart}, ensure_ascii=False)}\n\n"
-                    yield f"data: {json.dumps({'type': 'done', 'session_id': session_id}, ensure_ascii=False)}\n\n"
-                    return
-                except Exception as e:
-                    logger.error("NL2SQL 降级链路异常: %s", traceback.format_exc())
-                    reply = f"分析出错：{e}"
+                else:
+                    reply = f"【AI 已理解您的问题】\n生成 SQL：\n{result['sql']}\n\n（Mock 模式未执行查询，切换 USE_REAL_DATA=true 后自动执行并解读）"
                     _append_session(session_id, "assistant", reply)
                     yield f"data: {json.dumps({'type': 'text', 'content': reply}, ensure_ascii=False)}\n\n"
-                    yield f"data: {json.dumps({'type': 'done', 'session_id': session_id}, ensure_ascii=False)}\n\n"
-                    return
+                yield f"data: {json.dumps({'type': 'done', 'session_id': session_id}, ensure_ascii=False)}\n\n"
+                return
+            except Exception as e:
+                logger.error("NL2SQL 降级链路异常: %s", traceback.format_exc())
+                reply = f"分析出错：{e}"
+                _append_session(session_id, "assistant", reply)
+                yield f"data: {json.dumps({'type': 'text', 'content': reply}, ensure_ascii=False)}\n\n"
+                yield f"data: {json.dumps({'type': 'done', 'session_id': session_id}, ensure_ascii=False)}\n\n"
+                return
 
-        # ── Mock 降级（D 前端 ai_chat.js 的 mockSend 自己处理 Mock chart，C 只给 text+done）──
-        reply = f"【Mock】收到：{message}。等 B 的 AI 模块接入后，这里会返回真实数据分析。"
+        # ── 最终降级（B 的 AI 模块未就绪）──
+        reply = f"【Mock】收到：{message}（AI 模块未就绪，返回文本回显）"
         _append_session(session_id, "assistant", reply)
         for i in range(0, len(reply), 6):
             chunk = reply[i:i + 6]
