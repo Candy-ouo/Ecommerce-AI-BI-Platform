@@ -19,7 +19,7 @@ backend/
 │   ├── trend.py           ← GET  /api/trend/active
 │   ├── top.py             ← GET  /api/top/items
 │   ├── funnel.py          ← GET  /api/funnel
-│   ├── rfm.py             ← GET  /api/rfm/dist（已接真实数据链路）
+│   ├── rfm.py             ← GET  /api/rfm/dist（直读 Hive ads_user_rfm，与 KPI/漏斗统一）
 │   ├── recommend.py       ← GET  /api/recommend?user_id=（已接真实数据链路）
 │   ├── report.py          ← GET  /api/report/latest + /api/report/history
 │   └── chat.py            ← POST /api/chat（SSE 流式，惰性导入 B 模块 + Mock 降级）
@@ -73,33 +73,24 @@ QWEN_BASE_URL=https://{WorkspaceId}.cn-beijing.maas.aliyuncs.com/compatible-mode
 | 全站日 | `dws_platform_day` | dt, total_uv, total_pv |
 | 商品日 | `dws_item_day` | dt, item_id, pv_cnt, fav_cnt, buy_cnt |
 | 漏斗 | `ads_funnel` | dt, pv_users, fav_users, cart_users, buy_users（转化率列待 D 需要再扩展） |
-| RFM | `ads_user_rfm` | dt, user_id, R, F, M, R_score, F_score, M_score, rfm_label |
+| RFM | `ads_user_rfm` | dt, user_id, rfm_label_cn, rfm_group, cnt |
 
-> 另外 C 的 `rfm.py` / `recommend.py` 从 **MySQL** 读（B 模型产出、你建表写入），
-> A 路径 RFM 查 Hive `ads_user_rfm`，B 路径查 MySQL `rfm_result`（详见 B 的 b_dual_path.md）。
-> 推荐数据查 MySQL 表 `recommends`（B 的 CSV 导入后建此表）。最终以你的 `docs/schema.md` 为准。
+> 另外 C 的 `rfm.py` 已改为**直读 Hive ads_user_rfm**（跟 KPI/趋势/漏斗统一，`rfm_label_cn` 字段），
+> MySQL 路径已去掉。推荐数据仍查 MySQL 表 `recommends`（B 的 CSV 导入后建此表）。
+> 最终以你的 `docs/schema.md` 为准。
 
 ---
 
 ## 三、从 B 的 AI 设计文档中，C 需注意 / 可复用的点
 
-### 3.1 RFM 真实标签（接真实数据时替换 Mock）
+### 3.1 RFM 数据链路（已改为直读 A 的 Hive，不再走 MySQL）
 
-B 的 `rfm_model.py` 产出 8 类标签（与 C 当前 Mock 命名不同），C 的 `GET /api/rfm/dist` 接真实数据时要按 B 的真实标签返回：
+A 的 `ads_user_rfm`（Hive）用 NTILE(3) 三分位打了 9 类标签（字段 `rfm_label_cn`），
+跟 B 的 `rfm_model.py` 算法一致。C 的 `GET /api/rfm/dist` 已改为直读 Hive，
+与 KPI/趋势/漏斗接口统一，不再走 B→MySQL→C 绕路。
 
-| 标签 | 人数 | 占比 |
-|------|------|------|
-| 新锐潜力用户 | 4,443 | 44.4% |
-| 重要价值用户 | 2,558 | 25.6% |
-| 低价值用户 | 1,337 | 13.4% |
-| 浏览型用户 | 1,114 | 11.1% |
-| 重要挽留用户 | 234 | 2.3% |
-| 重要发展用户 | 150 | 1.5% |
-| 重要保持用户 | 125 | 1.3% |
-| 一般发展/价值用户 | 39 | 0.4% |
-
-> B 的 `rfm_result.csv` 字段：`user_id, R, F, M, R_score, F_score, M_score, rfm_label`
-> C 导入 MySQL 的 `rfm_result` 表后，接口读取 `rfm_label` 作 labels、`COUNT(*)` 作 counts。
+> A 的 `rfm_label_cn` 为 9 类中文标签。旧 MySQL 路径的 `services/db.py` 中 `get_rfm()` 保留不动（/api/recommend 仍走 MySQL）。
+> B 的 `rfm_model.py` 产出 `rfm_result.csv` 仍可用于交叉验证（本文档 3.3 导入 SQL 保留参考）。
 
 ### 3.2 推荐结果结构（接真实数据时返回 item_id + score + reason）
 
