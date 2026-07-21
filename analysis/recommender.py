@@ -224,12 +224,16 @@ def _generate_recommendations(
         if not bought_cols:
             continue
 
-        # 汇总候选商品得分
+        # 汇总候选商品得分，同时追踪最佳来源商品（用于生成推荐理由）
         candidate_scores = defaultdict(float)
+        candidate_source = {}  # sim_col → (best_source_col, best_sim_score)
+
         for col_idx in bought_cols:
             for sim_col, sim_score in item_topk.get(col_idx, []):
                 if sim_col not in bought_cols:
                     candidate_scores[sim_col] += sim_score
+                    if sim_col not in candidate_source or sim_score > candidate_source[sim_col][1]:
+                        candidate_source[sim_col] = (col_idx, sim_score)
 
         if not candidate_scores:
             continue
@@ -237,10 +241,15 @@ def _generate_recommendations(
         # 排序取 TopN
         sorted_candidates = sorted(candidate_scores.items(), key=lambda x: x[1], reverse=True)
         for sim_col, score in sorted_candidates[:TOP_N_RECOMMEND]:
+            source_col, source_sim = candidate_source.get(sim_col, (None, 0))
+            source_item_id = item_ids[source_col] if source_col is not None else "未知"
+            reason = f"与您购买过的商品{source_item_id}偏好相似（相似度{source_sim:.2f}）"
+
             results.append({
                 "user_id": uid,
                 "item_id": item_ids[sim_col],
                 "score": round(score, 4),
+                "reason": reason,
             })
 
         user_count += 1
