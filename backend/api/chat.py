@@ -79,10 +79,19 @@ _generate_sql = None
 _explain_result = None
 _smart_chat = None
 _query = None
+_run_agent = None
+
+# Agent 触发关键词
+_AGENT_KEYWORDS = [
+    "全面分析", "综合分析", "分析一下", "深度分析",
+    "生成报告", "分析报告", "帮我分析", "做个分析",
+    "转化分析", "漏斗分析", "用户分析", "整体分析",
+    "诊断", "复盘", "总结一下", "概况",
+]
 
 def _lazy_import():
     """惰性加载 B 模块 + C 的 hive_client。失败则留 None，chat() 自动降级 Mock。"""
-    global _generate_sql, _explain_result, _smart_chat, _query
+    global _generate_sql, _explain_result, _smart_chat, _query, _run_agent
     if _generate_sql is None:
         try:
             from ai.nl2sql.sql_generator import generate_sql as gs
@@ -107,6 +116,13 @@ def _lazy_import():
             _query = q
         except Exception:
             logger.warning("hive_client 不可用: %s", traceback.format_exc())
+    if _run_agent is None:
+        try:
+            from ai.agent.analysis_agent import run_agent as ra
+            _run_agent = ra
+            logger.info("Agent 模块已就绪，chat 内智能路由可用")
+        except Exception:
+            logger.info("Agent 模块不可用，chat 只走 NL2SQL 链路")
 
 
 def _build_context_message(message: str, session_id: str) -> str:
@@ -131,11 +147,46 @@ def _build_context_message(message: str, session_id: str) -> str:
     return "\n".join(context_lines)
 
 
+def _parse_request_body_with_fallback(request):
+    """尝试多种编码解析请求体（修复 Windows PowerShell GBK 编码问题）。"""
+    raw = request.get_data()
+    if not raw:
+        return None
+    # 先试 GBK 系列（中文 Windows 默认编码），最后兜底 latin-1
+    for enc in ('gb18030', 'gbk', 'gb2312', 'utf-8', 'latin-1'):
+        try:
+            text = raw.decode(enc)
+            return json.loads(text)
+        except (UnicodeDecodeError, json.JSONDecodeError):
+            continue
+    return None
+
+
+def _is_agent_task(message: str) -> bool:
+    """简单关键词匹配：判断是否需要走 Agent 多步分析链路。
+
+    匹配到任何关键词则返回 True。也检测长问题（>40字）作为辅助信号。
+    """
+    return any(kw in message for kw in _AGENT_KEYWORDS) or len(message) > 40
+
+
 @bp.route("", methods=["POST"])
 def chat():
     data = request.get_json(silent=True) or {}
     # 兼容 D 前端发送 {question} 和旧版 {message} 两种字段名
     message = (data.get("message", "") or data.get("question", "") or "").strip()
+
+    # 修复 Windows PowerShell GBK 编码导致的中文乱码问题
+    # 检测：如果消息中大量 ? 字符（中文被错误解码为 ?）则尝试多种编码
+    q_count = message.count('?') if message else 0
+    if q_count > 0 and q_count > len(message) * 0.25:
+        try:
+            fixed_data = _parse_request_body_with_fallback(request)
+            if fixed_data:
+                message = (fixed_data.get("message", "") or fixed_data.get("question", "") or "").strip()
+        except Exception:
+            pass
+
     session_id = (data.get("session_id", "") or "").strip() or str(uuid.uuid4())[:8]
 
     if not message:
@@ -159,8 +210,38 @@ def chat():
         # 记录用户消息
         _append_session(session_id, "user", message)
 
-        # ── 始终尝试 B 的 smart_chat（非数据问题无需 Hive）──
+        # ── 智能路由：检测是否需要走 Agent 多步分析 ──
         _lazy_import()
+        _agent_ready = _run_agent is not None
+        _is_agent = _is_agent_task(message)
+        logger.info("Agent 路由检查: ready=%s, is_agent=%s, msg=%s",
+                    _agent_ready, _is_agent, message[:60])
+        if _agent_ready and _is_agent:
+            logger.info("Chat → Agent 智能路由: %s", message[:80])
+            try:
+                yield f"data: {json.dumps({'type': 'text', 'content': f'正在综合分析：{message[:30]}...\n\n'}, ensure_ascii=False)}\n\n"
+                report = _run_agent(message)
+                # 后处理：Agent 可能返回 JSON 格式 {"action":"final","answer":"..."}
+                try:
+                    parsed = json.loads(report)
+                    if isinstance(parsed, dict) and "answer" in parsed:
+                        report = parsed["answer"]
+                except (json.JSONDecodeError, TypeError):
+                    pass
+                _append_session(session_id, "assistant", report)
+                for i in range(0, len(report), 15):
+                    yield f"data: {json.dumps({'type': 'text', 'content': report[i:i+15]}, ensure_ascii=False)}\n\n"
+                yield f"data: {json.dumps({'type': 'done', 'session_id': session_id}, ensure_ascii=False)}\n\n"
+                return
+            except BaseException as e:
+                # GeneratorExit / KeyboardInterrupt 向上抛，其他异常降级
+                if isinstance(e, (GeneratorExit, KeyboardInterrupt, SystemExit)):
+                    raise
+                logger.error("Agent 链路异常: %s", traceback.format_exc())
+                yield f"data: {json.dumps({'type': 'text', 'content': f'深度分析异常，切换到单次查询模式...'}, ensure_ascii=False)}\n\n"
+                # 降级到下方 NL2SQL 链路
+
+        # ── NL2SQL 原链路（单次查询）──
         if _smart_chat:
             try:
                 # 1. B 的混合路由：意图分类 + SQL 生成/闲聊/知识问答

@@ -22,11 +22,14 @@
 
 ```bash
 # 安装 Python 依赖
-pip install -r requirements.txt
+pip install -r backend/requirements.txt
 
-# 配置环境变量
-cp .env.example .env
-# 编辑 .env 填写你的 Hive/MySQL/LLM API 连接信息
+# 配置后端环境变量
+cp backend/.env.example backend/.env
+# 编辑 backend/.env 填写你的 Hive/MySQL/LLM API 连接信息
+
+# 同时拷贝一份到项目根目录（AI 模块需要读取）
+cp backend/.env .env
 ```
 
 ### 2. 数据导入

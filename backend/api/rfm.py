@@ -27,13 +27,11 @@ def dist():
     if USE_REAL_DATA:
         from services.hive_client import query
         try:
-            # 动态取最新分区日期
-            dt_df = query("SELECT MAX(dt) FROM ads_user_rfm")
-            latest_dt = dt_df.iloc[0, 0] if not dt_df.empty else "2014-12-18"
-            df = query(f"""
+            # 用子查询取最新分区，避免 SQL 拼接
+            df = query("""
                 SELECT rfm_label_cn, COUNT(*) AS cnt
                 FROM ads_user_rfm
-                WHERE dt = '{latest_dt}'
+                WHERE dt = (SELECT MAX(dt) FROM ads_user_rfm)
                 GROUP BY rfm_label_cn
                 ORDER BY cnt DESC
             """)
