@@ -10,6 +10,7 @@
 import json
 import logging
 import os
+import re
 import sys
 import time
 import threading
@@ -219,7 +220,8 @@ def chat():
         if _agent_ready and _is_agent:
             logger.info("Chat → Agent 智能路由: %s", message[:80])
             try:
-                yield f"data: {json.dumps({'type': 'text', 'content': f'正在综合分析：{message[:30]}...\n\n'}, ensure_ascii=False)}\n\n"
+                display_msg = re.sub(r'^分析一下[：:]?\\s*', '', message) if isinstance(message, str) else message
+                yield f"data: {json.dumps({'type': 'status', 'content': f'正在综合分析：{display_msg[:30]}...'}, ensure_ascii=False)}\n\n"
                 report = _run_agent(message)
                 # 后处理：Agent 可能返回 JSON 格式 {"action":"final","answer":"..."}
                 try:
@@ -229,8 +231,7 @@ def chat():
                 except (json.JSONDecodeError, TypeError):
                     pass
                 _append_session(session_id, "assistant", report)
-                for i in range(0, len(report), 15):
-                    yield f"data: {json.dumps({'type': 'text', 'content': report[i:i+15]}, ensure_ascii=False)}\n\n"
+                yield f"data: {json.dumps({'type': 'text', 'content': report}, ensure_ascii=False)}\n\n"
                 yield f"data: {json.dumps({'type': 'done', 'session_id': session_id}, ensure_ascii=False)}\n\n"
                 return
             except BaseException as e:
@@ -251,9 +252,7 @@ def chat():
                 if sc_result.get("type") != "data_query":
                     reply = sc_result.get("answer", "抱歉，我无法回答这个问题。")
                     _append_session(session_id, "assistant", reply)
-                    for i in range(0, len(reply), 10):
-                        yield f"data: {json.dumps({'type': 'text', 'content': reply[i:i+10]}, ensure_ascii=False)}\n\n"
-                        time.sleep(0.03)
+                    yield f"data: {json.dumps({'type': 'text', 'content': reply}, ensure_ascii=False)}\n\n"
                     yield f"data: {json.dumps({'type': 'done', 'session_id': session_id}, ensure_ascii=False)}\n\n"
                     return
 
@@ -268,7 +267,7 @@ def chat():
 
                 # 4. 执行 SQL + 解读（真实模式）或返回 SQL（Mock 模式给 B 看效果）
                 if USE_REAL_DATA and _query and _explain_result:
-                    yield f"data: {json.dumps({'type': 'text', 'content': '正在查询数据...'}, ensure_ascii=False)}\n\n"
+                    yield f"data: {json.dumps({'type': 'status', 'content': '正在查询数据...'}, ensure_ascii=False)}\n\n"
                     df = _query(sql)
                     answer = _explain_result(contextual_message, sql, df)
                     _append_session(session_id, "assistant", answer)
@@ -303,7 +302,7 @@ def chat():
                     yield f"data: {json.dumps({'type': 'done', 'session_id': session_id}, ensure_ascii=False)}\n\n"
                     return
                 if USE_REAL_DATA and _query and _explain_result:
-                    yield f"data: {json.dumps({'type': 'text', 'content': '正在查询数据...'}, ensure_ascii=False)}\n\n"
+                    yield f"data: {json.dumps({'type': 'status', 'content': '正在查询数据...'}, ensure_ascii=False)}\n\n"
                     df = _query(result["sql"])
                     answer = _explain_result(contextual_message, result["sql"], df)
                     _append_session(session_id, "assistant", answer)

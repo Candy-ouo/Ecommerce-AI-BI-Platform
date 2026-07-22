@@ -74,9 +74,11 @@ Your final report should be:
 1. Data-driven — Every claim backed by numbers from tool results
 2. Structured — Overview first, then drill-down, then actionable insight
 3. Concise — 6-12 sentences in Chinese
-4. Actionable — End with at least 1 specific recommendation
+4. Actionable — End with 1-2 specific recommendations
+5. Readable — Use line breaks (\\n) to separate paragraphs. Put 2-3 sentences per paragraph. Do not output one giant wall of text.
+6. End with a "你可以继续追问：" line followed by 3 short suggested questions, each ending with ？. Keep them concise.
 
-Good example: "全站转化漏斗显示，浏览→收藏转化率35%，但收藏→加购仅57%，建议在收藏页增加'一键加购'按钮以减少此环节流失。"
+Good example: "全站转化漏斗显示，浏览→收藏转化率35%，但收藏→加购仅57%。\\n\\n建议在收藏页增加'一键加购'按钮，以减少此环节流失。"
 Bad example: "转化率需要关注。" (too vague, no data, no action)
 
 # Edge Cases
