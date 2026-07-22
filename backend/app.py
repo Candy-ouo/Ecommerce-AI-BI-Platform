@@ -4,6 +4,17 @@
 """
 import logging
 import os
+import sys
+
+# ── 让 backend 能直接 import 项目根目录下的 ai/ 包 ──
+# 运行时在 backend/ 目录下 `python app.py` 也能找到 ai.agent / ai.nl2sql 等
+_PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if _PROJECT_ROOT not in sys.path:
+    sys.path.insert(0, _PROJECT_ROOT)
+_BACKEND_DIR = os.path.dirname(os.path.abspath(__file__))
+if _BACKEND_DIR not in sys.path:
+    sys.path.insert(0, _BACKEND_DIR)
+
 from logging.handlers import RotatingFileHandler
 from flask import Flask, request, jsonify
 from flask_cors import CORS

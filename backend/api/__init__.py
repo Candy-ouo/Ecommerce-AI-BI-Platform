@@ -7,6 +7,7 @@ from .rfm import bp as rfm_bp
 from .recommend import bp as recommend_bp
 from .chat import bp as chat_bp
 from .report import bp as report_bp
+from .agent import bp as agent_bp
 
 
 def register_blueprints(app):
@@ -18,3 +19,4 @@ def register_blueprints(app):
     app.register_blueprint(recommend_bp)
     app.register_blueprint(chat_bp)
     app.register_blueprint(report_bp)
+    app.register_blueprint(agent_bp)

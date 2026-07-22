@@ -9,3 +9,9 @@ duckdb
 apscheduler
 requests
 DBUtils
+openai
+numpy
+scipy
+scikit-learn
+xgboost
+matplotlib
