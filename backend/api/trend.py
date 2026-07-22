@@ -21,8 +21,17 @@ def _fmt_date(d):
 
 @bp.route("/active")
 def active():
-    days = int(request.args.get("days", 7))
+    try:
+        days = int(request.args.get("days", 7))
+    except (ValueError, TypeError):
+        return fail("参数 days 必须为整数", 400)
     category = request.args.get("category", "").strip()
+    # 校验 category 为有效整数（Hive 表 item_category 是数字类型）
+    if category and category.lower() != "all":
+        try:
+            int(category)
+        except ValueError:
+            return fail("参数 category 必须为整数", 400)
     if USE_REAL_DATA:
         try:
             df = query(trend_active_sql(days, category or None))

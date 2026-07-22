@@ -3,6 +3,19 @@
 运行：在 backend/ 目录下 `python app.py`
 """
 import logging
+import os
+import sys
+
+# ── 让 backend 能直接 import 项目根目录下的 ai/ 包 ──
+# 运行时在 backend/ 目录下 `python app.py` 也能找到 ai.agent / ai.nl2sql 等
+_PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if _PROJECT_ROOT not in sys.path:
+    sys.path.insert(0, _PROJECT_ROOT)
+_BACKEND_DIR = os.path.dirname(os.path.abspath(__file__))
+if _BACKEND_DIR not in sys.path:
+    sys.path.insert(0, _BACKEND_DIR)
+
+from logging.handlers import RotatingFileHandler
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 
@@ -15,6 +28,21 @@ logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
 CORS(app)                      # 允许 D 的前端跨域调用
+
+# ── 日志轮转（生产环境必备）────────────────────
+_LOG_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "logs")
+os.makedirs(_LOG_DIR, exist_ok=True)
+_log_file = os.path.join(_LOG_DIR, "backend.log")
+_handler = RotatingFileHandler(_log_file, maxBytes=5 * 1024 * 1024, backupCount=3, encoding="utf-8")
+_handler.setFormatter(logging.Formatter(
+    "%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
+))
+_handler.setLevel(logging.INFO)
+# 同时挂到 root logger 和 Flask app logger
+logging.getLogger().addHandler(_handler)
+logging.getLogger().setLevel(logging.INFO)
+app.logger.addHandler(_handler)
 
 # ── 注册蓝图（含异常保护，避免导入环节静默失败）────
 try:

@@ -6,3 +6,12 @@ pandas
 pymysql
 python-dotenv
 duckdb
+apscheduler
+requests
+DBUtils
+openai
+numpy
+scipy
+scikit-learn
+xgboost
+matplotlib

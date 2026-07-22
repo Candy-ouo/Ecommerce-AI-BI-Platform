@@ -27,13 +27,16 @@ def query(sql: str) -> pd.DataFrame:
         return _get_duckdb_conn().execute(sql).fetchdf()
 
     from pyhive import hive
-    conn = hive.Connection(
-        host=HIVE_HOST,
-        port=HIVE_PORT,
-        username=HIVE_USER,
-        password=HIVE_PASSWORD,
-        database=HIVE_DATABASE,
-    )
+    conn_kwargs = {
+        "host": HIVE_HOST,
+        "port": HIVE_PORT,
+        "username": HIVE_USER,
+        "database": HIVE_DATABASE,
+    }
+    # Docker Hive 不需要密码时传空串会触发 LDAP 鉴权报错 — 仅在设置了密码时才传入
+    if HIVE_PASSWORD:
+        conn_kwargs["password"] = HIVE_PASSWORD
+    conn = hive.Connection(**conn_kwargs)
     try:
         return pd.read_sql(sql, conn)
     finally:

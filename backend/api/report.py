@@ -15,7 +15,7 @@ from flask import Blueprint, request, Response, stream_with_context
 from api._response import ok, fail
 from config import USE_REAL_DATA
 from services.db import get_report_latest, get_report_history
-from scheduler import subscribe_report
+from scheduler import subscribe_report, unsubscribe_report
 
 bp = Blueprint("report", __name__, url_prefix="/api/report")
 logger = logging.getLogger(__name__)
@@ -122,6 +122,7 @@ def stream():
                     # 心跳保活
                     yield f"data: {json.dumps({'type': 'ping'})}\n\n"
         except GeneratorExit:
+            unsubscribe_report(on_new_report)
             logger.info("SSE report stream client disconnected")
 
     return Response(
