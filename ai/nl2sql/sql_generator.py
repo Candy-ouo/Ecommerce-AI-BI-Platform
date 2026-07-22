@@ -403,7 +403,7 @@ def generate_sql(
                  len(system_prompt), len(user_prompt))
 
     raw = llm.chat(prompt=user_prompt, system_prompt=system_prompt, temperature=0.05)
-    sql = _clean_sql(raw)
+    sql = _clean_sql(raw).rstrip(";").strip()
 
     logger.info("Q: %s", question[:80])
     logger.info("SQL: %s", sql[:200])
