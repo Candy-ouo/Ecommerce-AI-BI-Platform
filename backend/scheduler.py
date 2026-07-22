@@ -1,7 +1,6 @@
 """定时任务调度器：每天 8:00 触发 AI 晨报生成。
 
-接 B 的 ai.morning_report.generate_report() 生成晨报，落库到 MySQL
-morning_report 表，D 通过 /api/report/* 展示。
+流程：调用 api.report.trigger_report_generation() → Hive 取数 → LLM 生成 → 入内存缓存 → SSE 推送。
 
 生成成功后：
 - 钉钉推送（如配置了 DINGTALK_WEBHOOK）
@@ -17,31 +16,6 @@ from config import USE_REAL_DATA
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
-
-# 报告变更事件订阅者（SSE 推送用，由 report.py 注册）
-_report_subscribers: list = []
-
-
-def subscribe_report(callback):
-    """注册报告变更监听（供 report.py 的 SSE 端点用）。"""
-    _report_subscribers.append(callback)
-
-
-def unsubscribe_report(callback):
-    """取消注册（SSE 客户端断开时清理，避免内存泄漏）。"""
-    try:
-        _report_subscribers.remove(callback)
-    except ValueError:
-        pass
-
-
-def _notify_subscribers(report: dict):
-    """通知所有 SSE 订阅者。"""
-    for cb in _report_subscribers:
-        try:
-            cb(report)
-        except Exception:
-            pass
 
 
 def _push_dingtalk(report: dict):
@@ -80,7 +54,12 @@ def _push_dingtalk(report: dict):
 
 
 def _generate_daily_report():
-    """每日晨报生成任务（每天 8:00 触发）。"""
+    """每日晨报生成任务（每天 8:00 触发）。
+
+    调用 api.report.trigger_report_generation()：
+    从 Hive 取数 → LLM 生成 → 入内存缓存 → SSE 推送订阅者。
+    不再依赖 MySQL / services.db。
+    """
     logger.info("晨报生成任务触发 — %s", datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
 
     if not USE_REAL_DATA:
@@ -88,17 +67,13 @@ def _generate_daily_report():
         return
 
     try:
-        # B 的 AI 晨报模块
-        from ai.morning_report import generate_report
-        from services.db import save_report
+        from api.report import trigger_report_generation
 
-        report = generate_report()
-        save_report(report["date"], report["content"], report["anomalies"])
+        report = trigger_report_generation()
         logger.info("晨报生成成功 — %s", report.get("date", ""))
 
-        # 推送
+        # 钉钉推送
         _push_dingtalk(report)
-        _notify_subscribers(report)
 
     except Exception as e:
         logger.error("晨报生成失败: %s", e)
