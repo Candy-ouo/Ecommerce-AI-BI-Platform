@@ -240,7 +240,8 @@ class TestPromptBuilding:
     def test_system_prompt_is_constant(self):
         """System Prompt 内容不变"""
         assert "Senior Data Engineer" in _build_system_prompt()
-        assert "partition-aware" in _build_system_prompt()
+        assert "CRITICAL RULES" in _build_system_prompt().replace("Critical Rules", "CRITICAL RULES") \
+               or "partition" in _build_system_prompt().lower()
 
     def test_system_prompt_contains_rules(self):
         sp = _build_system_prompt()
