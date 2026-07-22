@@ -2,21 +2,24 @@
 -- 04_ads_app.sql — ADS 应用层：面向大屏/API 的即查即用指标表
 -- 负责：A — 数仓架构师
 -- 依赖：DWS 层数据已就绪
--- 说明：这些表直接支撑 C 的 REST API 和 D 的大屏图表
+-- 优化：拆掉 UNION ALL 的漏斗查询为两个独立 INSERT，
+--       reducer 按组序处理，每次只维护一个组的哈希集合
 -- ============================================================
 
 USE ecommerce_bi;
 
 SET hive.exec.dynamic.partition.mode=nonstrict;
-SET mapreduce.map.memory.mb=1024;
-SET mapreduce.reduce.memory.mb=1024;
-SET mapreduce.map.java.opts=-Xmx800m;
-SET mapreduce.reduce.java.opts=-Xmx800m;
+SET mapreduce.map.memory.mb=4096;
+SET mapreduce.reduce.memory.mb=4096;
+SET mapreduce.map.java.opts=-Xmx3600m;
+SET mapreduce.reduce.java.opts=-Xmx3600m;
+SET mapreduce.map.speculative=false;
+SET mapreduce.reduce.speculative=false;
+-- 不用 hive.groupby.skewindata，会强制 map 端额外聚合导致 OOM
 
 -- ----------------------------
 -- 1. 每日 KPI 汇总表 ads_daily_kpi
---    面向大屏 KPI 指标卡（F3.1）
---    API: GET /api/kpi/cards
+--    依赖：dws_platform_day（数据量小，无需改动）
 -- ----------------------------
 DROP TABLE IF EXISTS ads_daily_kpi;
 CREATE TABLE ads_daily_kpi (
@@ -57,7 +60,8 @@ WHERE curr.dt IS NOT NULL;
 
 -- ----------------------------
 -- 2. 转化漏斗表 ads_funnel
---    全站 + 各类目漏斗各环节人数
+--    两步法：先预聚合到 (category,date,user) 粒度标记各漏斗环节，
+--    再从预聚合表做 SUM() 替代 COUNT(DISTINCT)
 --    API: GET /api/funnel
 -- ----------------------------
 DROP TABLE IF EXISTS ads_funnel;
@@ -77,55 +81,60 @@ COMMENT 'ADS 转化漏斗 — 全站+各类目漏斗各环节人数与转化率'
 PARTITIONED BY (dt STRING COMMENT '分区日期 YYYY-MM-DD')
 STORED AS ORC;
 
-INSERT OVERWRITE TABLE ads_funnel PARTITION (dt)
--- 全站漏斗
-SELECT
-    NULL                                              AS item_category,
-    '全站'                                            AS level_name,
-    COUNT(DISTINCT CASE WHEN behavior_type = 1 THEN user_id END) AS pv_users,
-    COUNT(DISTINCT CASE WHEN behavior_type = 2 THEN user_id END) AS fav_users,
-    COUNT(DISTINCT CASE WHEN behavior_type = 3 THEN user_id END) AS cart_users,
-    COUNT(DISTINCT CASE WHEN behavior_type = 4 THEN user_id END) AS buy_users,
-    ROUND(COUNT(DISTINCT CASE WHEN behavior_type = 2 THEN user_id END) * 1.0
-        / NULLIF(COUNT(DISTINCT CASE WHEN behavior_type = 1 THEN user_id END), 0), 4) AS pv_to_fav_rate,
-    ROUND(COUNT(DISTINCT CASE WHEN behavior_type = 3 THEN user_id END) * 1.0
-        / NULLIF(COUNT(DISTINCT CASE WHEN behavior_type = 2 THEN user_id END), 0), 4) AS fav_to_cart_rate,
-    ROUND(COUNT(DISTINCT CASE WHEN behavior_type = 4 THEN user_id END) * 1.0
-        / NULLIF(COUNT(DISTINCT CASE WHEN behavior_type = 3 THEN user_id END), 0), 4) AS cart_to_buy_rate,
-    ROUND(COUNT(DISTINCT CASE WHEN behavior_type = 4 THEN user_id END) * 1.0
-        / NULLIF(COUNT(DISTINCT CASE WHEN behavior_type = 1 THEN user_id END), 0), 4) AS pv_to_buy_rate,
-    behavior_date                                     AS dt
-FROM dwd_user_behavior
-WHERE behavior_date IS NOT NULL
-GROUP BY behavior_date
-
-UNION ALL
-
--- 各类目漏斗
+-- Step 1: 一次扫描 DWD，标记每个用户在 (category,date) 上的漏斗环节
+DROP TABLE IF EXISTS tmp_funnel_user;
+CREATE TABLE tmp_funnel_user AS
 SELECT
     item_category,
-    CAST(item_category AS STRING)                     AS level_name,
-    COUNT(DISTINCT CASE WHEN behavior_type = 1 THEN user_id END) AS pv_users,
-    COUNT(DISTINCT CASE WHEN behavior_type = 2 THEN user_id END) AS fav_users,
-    COUNT(DISTINCT CASE WHEN behavior_type = 3 THEN user_id END) AS cart_users,
-    COUNT(DISTINCT CASE WHEN behavior_type = 4 THEN user_id END) AS buy_users,
-    ROUND(COUNT(DISTINCT CASE WHEN behavior_type = 2 THEN user_id END) * 1.0
-        / NULLIF(COUNT(DISTINCT CASE WHEN behavior_type = 1 THEN user_id END), 0), 4) AS pv_to_fav_rate,
-    ROUND(COUNT(DISTINCT CASE WHEN behavior_type = 3 THEN user_id END) * 1.0
-        / NULLIF(COUNT(DISTINCT CASE WHEN behavior_type = 2 THEN user_id END), 0), 4) AS fav_to_cart_rate,
-    ROUND(COUNT(DISTINCT CASE WHEN behavior_type = 4 THEN user_id END) * 1.0
-        / NULLIF(COUNT(DISTINCT CASE WHEN behavior_type = 3 THEN user_id END), 0), 4) AS cart_to_buy_rate,
-    ROUND(COUNT(DISTINCT CASE WHEN behavior_type = 4 THEN user_id END) * 1.0
-        / NULLIF(COUNT(DISTINCT CASE WHEN behavior_type = 1 THEN user_id END), 0), 4) AS pv_to_buy_rate,
-    behavior_date                                     AS dt
+    behavior_date,
+    user_id,
+    MAX(CASE WHEN behavior_type = 1 THEN 1 ELSE 0 END) AS has_pv,
+    MAX(CASE WHEN behavior_type = 2 THEN 1 ELSE 0 END) AS has_fav,
+    MAX(CASE WHEN behavior_type = 3 THEN 1 ELSE 0 END) AS has_cart,
+    MAX(CASE WHEN behavior_type = 4 THEN 1 ELSE 0 END) AS has_buy
 FROM dwd_user_behavior
 WHERE behavior_date IS NOT NULL
+GROUP BY item_category, behavior_date, user_id;
+
+-- Step 2A: 全站漏斗（按 date 汇总）
+INSERT INTO TABLE ads_funnel PARTITION (dt)
+SELECT
+    NULL                  AS item_category,
+    '全站'                AS level_name,
+    SUM(has_pv)           AS pv_users,
+    SUM(has_fav)          AS fav_users,
+    SUM(has_cart)         AS cart_users,
+    SUM(has_buy)          AS buy_users,
+    ROUND(SUM(has_fav)  * 1.0 / NULLIF(SUM(has_pv),  0), 4) AS pv_to_fav_rate,
+    ROUND(SUM(has_cart) * 1.0 / NULLIF(SUM(has_fav), 0), 4) AS fav_to_cart_rate,
+    ROUND(SUM(has_buy)  * 1.0 / NULLIF(SUM(has_cart),0), 4) AS cart_to_buy_rate,
+    ROUND(SUM(has_buy)  * 1.0 / NULLIF(SUM(has_pv),  0), 4) AS pv_to_buy_rate,
+    behavior_date         AS dt
+FROM tmp_funnel_user
+GROUP BY behavior_date;
+
+-- Step 2B: 各类目漏斗（按 category+date 汇总）
+INSERT INTO TABLE ads_funnel PARTITION (dt)
+SELECT
+    item_category,
+    CAST(item_category AS STRING) AS level_name,
+    SUM(has_pv)           AS pv_users,
+    SUM(has_fav)          AS fav_users,
+    SUM(has_cart)         AS cart_users,
+    SUM(has_buy)          AS buy_users,
+    ROUND(SUM(has_fav)  * 1.0 / NULLIF(SUM(has_pv),  0), 4) AS pv_to_fav_rate,
+    ROUND(SUM(has_cart) * 1.0 / NULLIF(SUM(has_fav), 0), 4) AS fav_to_cart_rate,
+    ROUND(SUM(has_buy)  * 1.0 / NULLIF(SUM(has_cart),0), 4) AS cart_to_buy_rate,
+    ROUND(SUM(has_buy)  * 1.0 / NULLIF(SUM(has_pv),  0), 4) AS pv_to_buy_rate,
+    behavior_date         AS dt
+FROM tmp_funnel_user
 GROUP BY item_category, behavior_date;
+
+DROP TABLE IF EXISTS tmp_funnel_user;
 
 -- ----------------------------
 -- 3. 类目 TopN 排行表 ads_category_topn
---    按 PV 热度 / 购买热度排行
---    API: GET /api/top/items?limit=10&sort_by=pv
+--    依赖：dws_category_day（数据量小，无需改动）
 -- ----------------------------
 DROP TABLE IF EXISTS ads_category_topn;
 CREATE TABLE ads_category_topn (
@@ -156,10 +165,8 @@ WHERE dt IS NOT NULL;
 
 -- ----------------------------
 -- 4. 用户 RFM 分层表 ads_user_rfm
---    R/F/M 原始值 + 分箱得分 + 8类分层标签
---    API: GET /api/rfm/dist
---    注：B 的 rfm_model.py 也会产出 RFM 到 MySQL，
---        此表作为 Hive 侧的一致性备份，供 SQL 直接查询
+--    优化：COUNT(DISTINCT buy item_id) 拆到单独 pass
+--         GROUP BY user_id 时每组仅一个用户，内存安全
 -- ----------------------------
 DROP TABLE IF EXISTS ads_user_rfm;
 CREATE TABLE ads_user_rfm (
@@ -177,6 +184,15 @@ COMMENT 'ADS 用户 RFM 分层 — 供饼图直接查询'
 PARTITIONED BY (dt STRING COMMENT '分区日期 YYYY-MM-DD（统计截止日）')
 STORED AS ORC;
 
+-- Step A: 预计算每个用户购买的去重商品数（M值），无 COUNT(DISTINCT)
+DROP TABLE IF EXISTS tmp_user_m;
+CREATE TABLE tmp_user_m AS
+SELECT user_id, item_id
+FROM dwd_user_behavior
+WHERE behavior_type = 4 AND behavior_date IS NOT NULL
+GROUP BY user_id, item_id;
+
+-- Step B: RFM 计算
 INSERT OVERWRITE TABLE ads_user_rfm PARTITION (dt)
 SELECT
     user_id,
@@ -211,20 +227,26 @@ FROM (
         NTILE(3) OVER (ORDER BY m_value) AS m_score
     FROM (
         SELECT
-            user_id,
-            DATEDIFF('2014-12-18', MAX(behavior_date)) AS r_value,
-            SUM(CASE WHEN behavior_type = 4 THEN 1 ELSE 0 END) AS f_value,
-            COUNT(DISTINCT CASE WHEN behavior_type = 4 THEN item_id END) AS m_value
-        FROM dwd_user_behavior
-        WHERE behavior_date IS NOT NULL
-        GROUP BY user_id
+            a.user_id,
+            DATEDIFF('2014-12-18', MAX(a.behavior_date)) AS r_value,
+            SUM(CASE WHEN a.behavior_type = 4 THEN 1 ELSE 0 END) AS f_value,
+            COALESCE(b.m_value, 0) AS m_value
+        FROM dwd_user_behavior a
+        LEFT JOIN (
+            SELECT user_id, COUNT(1) AS m_value
+            FROM tmp_user_m
+            GROUP BY user_id
+        ) b ON a.user_id = b.user_id
+        WHERE a.behavior_date IS NOT NULL
+        GROUP BY a.user_id, b.m_value
     ) rfm_raw
 ) rfm_scored;
+
+DROP TABLE IF EXISTS tmp_user_m;
 
 -- ----------------------------
 -- 5. 用户推荐结果表 ads_user_recommend
 --    来源：B 的 recommender.py 产出 CSV → HDFS → 导入
---    API: GET /api/recommend
 -- ----------------------------
 DROP TABLE IF EXISTS ads_user_recommend;
 CREATE TABLE ads_user_recommend (
