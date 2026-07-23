@@ -9,13 +9,15 @@
 USE ecommerce_bi;
 
 SET hive.exec.dynamic.partition.mode=nonstrict;
-SET mapreduce.map.memory.mb=4096;
-SET mapreduce.reduce.memory.mb=4096;
-SET mapreduce.map.java.opts=-Xmx3600m;
-SET mapreduce.reduce.java.opts=-Xmx3600m;
+SET mapreduce.map.memory.mb=1024;
+SET mapreduce.reduce.memory.mb=1024;
+SET mapreduce.map.java.opts=-Xmx800m;
+SET mapreduce.reduce.java.opts=-Xmx800m;
 SET mapreduce.map.speculative=false;
 SET mapreduce.reduce.speculative=false;
 -- 不用 hive.groupby.skewindata，会强制 map 端额外聚合导致 OOM
+SET hive.strict.checks.cartesian.product=false;
+SET hive.mapred.mode=nonstrict;
 
 -- ----------------------------
 -- 1. 每日 KPI 汇总表 ads_daily_kpi
@@ -192,7 +194,7 @@ FROM dwd_user_behavior
 WHERE behavior_type = 4 AND behavior_date IS NOT NULL
 GROUP BY user_id, item_id;
 
--- Step B: RFM 计算
+-- Step B: RFM 计算（统计截止日 = 数据最新日期，动态推导，不硬编码）
 INSERT OVERWRITE TABLE ads_user_rfm PARTITION (dt)
 SELECT
     user_id,
@@ -215,30 +217,33 @@ SELECT
         WHEN r_score <= 2 AND f_score <= 2 AND m_score <= 2 THEN '低价值用户'
         ELSE '未知'
     END AS rfm_label_cn,
-    '2014-12-18' AS dt
+    max_date AS dt
 FROM (
     SELECT
         user_id,
         r_value,
         f_value,
         m_value,
+        max_date,
         4 - NTILE(3) OVER (ORDER BY r_value ASC) AS r_score,
         NTILE(3) OVER (ORDER BY f_value) AS f_score,
         NTILE(3) OVER (ORDER BY m_value) AS m_score
     FROM (
         SELECT
             a.user_id,
-            DATEDIFF('2014-12-18', MAX(a.behavior_date)) AS r_value,
+            DATEDIFF(max_ref.max_date, MAX(a.behavior_date)) AS r_value,
             SUM(CASE WHEN a.behavior_type = 4 THEN 1 ELSE 0 END) AS f_value,
-            COALESCE(b.m_value, 0) AS m_value
+            COALESCE(b.m_value, 0) AS m_value,
+            max_ref.max_date
         FROM dwd_user_behavior a
+        CROSS JOIN (SELECT MAX(behavior_date) AS max_date FROM dwd_user_behavior) max_ref
         LEFT JOIN (
             SELECT user_id, COUNT(1) AS m_value
             FROM tmp_user_m
             GROUP BY user_id
         ) b ON a.user_id = b.user_id
         WHERE a.behavior_date IS NOT NULL
-        GROUP BY a.user_id, b.m_value
+        GROUP BY a.user_id, b.m_value, max_ref.max_date
     ) rfm_raw
 ) rfm_scored;
 
@@ -262,10 +267,31 @@ FIELDS TERMINATED BY ','
 STORED AS TEXTFILE
 TBLPROPERTIES ('skip.header.line.count'='1');
 
--- 加载数据：
--- docker cp data/recommend_result.csv tier4_stu_namenode:/tmp/
--- docker exec tier4_stu_namenode hdfs dfs -put -f /tmp/recommend_result.csv /user/data/
--- docker exec tier4_stu_hiveserver2 hive -e "USE ecommerce_bi; LOAD DATA INPATH '/user/data/recommend_result.csv' OVERWRITE INTO TABLE ads_user_recommend PARTITION (dt='2014-12-18');"
+-- 加载推荐数据（前提：B 已运行 recommender.py 产出 CSV 并上传至 HDFS）
+-- 自分区中转：CSV 无日期字段，先灌入 __staging__，再从 dws_platform_day
+-- 取最新日期动态写入目标分区，确保与其他 ADS 表的 dt 保持一致
+
+SET hive.exec.dynamic.partition.mode=nonstrict;
+
+-- Step 1: 灌入中转分区
+LOAD DATA INPATH '/user/data/recommend_result.csv'
+OVERWRITE INTO TABLE ads_user_recommend
+PARTITION (dt='__staging__');
+
+-- Step 2: 从中转分区读出，写入最新日期分区
+INSERT OVERWRITE TABLE ads_user_recommend PARTITION (dt)
+SELECT
+    user_id,
+    item_id,
+    score,
+    reason,
+    max_dt AS dt
+FROM ads_user_recommend
+CROSS JOIN (SELECT MAX(dt) AS max_dt FROM dws_platform_day) max_ref
+WHERE dt = '__staging__';
+
+-- Step 3: 清理中转分区
+ALTER TABLE ads_user_recommend DROP IF EXISTS PARTITION (dt='__staging__');
 
 -- ----------------------------
 -- 6. 验证

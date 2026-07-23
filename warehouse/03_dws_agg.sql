@@ -9,10 +9,10 @@
 USE ecommerce_bi;
 
 SET hive.exec.dynamic.partition.mode=nonstrict;
-SET mapreduce.map.memory.mb=4096;
-SET mapreduce.reduce.memory.mb=4096;
-SET mapreduce.map.java.opts=-Xmx3600m;
-SET mapreduce.reduce.java.opts=-Xmx3600m;
+SET mapreduce.map.memory.mb=1024;
+SET mapreduce.reduce.memory.mb=1024;
+SET mapreduce.map.java.opts=-Xmx800m;
+SET mapreduce.reduce.java.opts=-Xmx800m;
 SET mapreduce.map.speculative=false;
 SET mapreduce.reduce.speculative=false;
 -- 注意：不用 hive.groupby.skewindata=true，会导致 map 端额外聚合 OOM
