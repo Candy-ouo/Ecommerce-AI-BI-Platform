@@ -19,21 +19,6 @@ const AIChat = (() => {
     return bubble;
   };
 
-  const getMockReply = (question) => {
-    const replies = [
-      "根据数据分析，本周销量最高的商品是无线蓝牙耳机，共售出 12,580 件，环比增长 18.3%。",
-      "当前日活跃用户数为 12,345，较昨日下降 3.0%。建议关注用户留存策略。",
-      "转化漏斗显示，从浏览到购买的转化率为 8%，主要流失环节在加购到购买阶段。",
-      "RFM 分析显示，重要价值用户占比约 12%，建议针对这部分用户推出专属优惠活动。",
-      "近 7 日 PV 数据呈现上升趋势，今日达到 165,000，创本周新高。",
-      "商品热度榜单中，智能穿戴类产品表现亮眼，智能手表排名第二。",
-      "数码品类转化率环比下降 12%，建议加大促销力度以挽回流失。",
-      "新用户占比约 15.8%，建议优化首单优惠策略以提升新用户转化率。"
-    ];
-    if (/你好|hi|hello/i.test(question)) return "你好！我是 AI 智能助手，可以帮你分析电商用户行为数据，例如询问销量趋势、品类热度或用户分层。";
-    return replies[Math.floor(Math.random() * replies.length)];
-  };
-
   // 根据后端 chart 事件构建 ECharts option
   const buildChartOption = (chartType, data) => {
     if (data && data.option) return data.option;
@@ -44,7 +29,22 @@ const AIChat = (() => {
         series: [{
           type: "pie", radius: ["35%", "65%"],
           itemStyle: { borderColor: "#131a2e", borderWidth: 2 },
-          label: { color: CONFIG.THEME.textColor },
+          label: {
+            show: true,
+            position: "outside",
+            color: CONFIG.THEME.textColor,
+            fontSize: 11,
+            formatter: "{b}: {d}%"
+          },
+          labelLine: {
+            show: true,
+            length: 15,
+            length2: 20,
+            lineStyle: {
+              color: CONFIG.THEME.textColor,
+              width: 1
+            }
+          },
           data: data.labels.map((l, i) => ({
             name: l, value: data.counts[i],
             itemStyle: { color: CONFIG.THEME.color[i % CONFIG.THEME.color.length] }
@@ -65,42 +65,21 @@ const AIChat = (() => {
 
   const renderChartBubble = (evt) => {
     const bubble = document.createElement("div");
-    bubble.className = "bubble ai";
+    bubble.className = "bubble ai has-chart";
     const box = document.createElement("div");
     box.className = "chat-chart";
     bubble.appendChild(box);
     chatMessages.appendChild(bubble);
-    const chart = echarts.init(box);
-    chatCharts.push(chart);
-    chart.setOption(buildChartOption(evt.chartType, evt.data));
     scrollToBottom();
+    setTimeout(() => {
+      const chart = echarts.init(box);
+      chatCharts.push(chart);
+      chart.setOption(buildChartOption(evt.chartType, evt.data));
+      chart.resize();
+    }, 100);
   };
 
-  // ===== Mock 模式：模拟逐字流式 + 可选图表 =====
-  const mockSend = async (question, aiBubble) => {
-    const reply = getMockReply(question);
-    let acc = "";
-    for (let i = 0; i < reply.length; i++) {
-      acc += reply[i];
-      aiBubble.innerHTML = acc + "<span class='cursor'>▌</span>";
-      scrollToBottom();
-      await new Promise(r => setTimeout(r, 18));
-    }
-    aiBubble.innerHTML = acc;
-
-    if (/趋势|图|排行|热度|分布|rfm/i.test(question)) {
-      await new Promise(r => setTimeout(r, 300));
-      const isPie = /分布|rfm/i.test(question);
-      renderChartBubble({
-        chartType: isPie ? "pie" : "bar",
-        data: isPie
-          ? { labels: ["重要价值", "重要保持", "一般价值", "一般挽留"], counts: [12500, 8900, 15800, 12100] }
-          : { categories: ["无线蓝牙耳机", "智能手表", "机械键盘", "游戏鼠标", "便携音箱"], values: [12580, 9850, 7620, 6450, 5380] }
-      });
-    }
-  };
-
-  // ===== 真实模式：POST /api/chat，解析 SSE 事件流 =====
+  // POST /api/chat，解析 SSE 事件流
   const realSend = async (question, aiBubble) => {
     const res = await fetch(`${CONFIG.API_BASE_URL}/api/chat`, {
       method: "POST",
@@ -158,11 +137,7 @@ const AIChat = (() => {
     const aiBubble = addBubble("<span class='cursor'>▌</span>", "ai");
 
     try {
-      if (CONFIG.USE_MOCK) {
-        await mockSend(question, aiBubble);
-      } else {
-        await realSend(question, aiBubble);
-      }
+      await realSend(question, aiBubble);
     } catch (err) {
       console.error("Chat error:", err);
       aiBubble.innerHTML = "网络异常，请稍后重试。";

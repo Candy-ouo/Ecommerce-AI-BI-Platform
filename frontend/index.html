@@ -5,12 +5,15 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>电商用户行为分析与 AI 智能 BI 平台</title>
   <link rel="stylesheet" href="css/dashboard.css" />
-  <!-- ECharts CDN：后续可换成本地文件 -->
-  <script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"></script>
+  <script src="js/lib/echarts.min.js"></script>
 </head>
 <body>
+  <!-- 加载遮罩 -->
+  <div class="loading-overlay" id="loading-overlay">
+    <div class="loading-spinner"></div>
+    <div class="loading-text">正在加载数据…</div>
+  </div>
   <div class="dashboard">
-    <!-- 顶部标题栏 -->
     <header class="header">
       <h1>电商用户行为分析与 AI 智能 BI 平台</h1>
       <div class="header-meta">
@@ -19,71 +22,79 @@
       </div>
     </header>
 
-    <!-- KPI 指标卡（由 charts.js 动态渲染 HTML 数字） -->
     <section class="kpi-cards" id="kpi-cards"></section>
 
-    <!-- 左侧：4 个图表网格 -->
-    <main class="grid">
-      <div class="card chart-card">
-        <div class="card-title">
-          <span>日活跃用户趋势</span>
-          <select id="trend-category" class="mini-select"></select>
-        </div>
+    <main class="main-area">
+      <div class="card chart-card" id="module-01">
+        <div class="card-title">日活跃用户趋势</div>
         <div id="chart-trend" class="chart"></div>
       </div>
-      <div class="card chart-card">
-        <div class="card-title">
-          <span>商品热度 Top10</span>
-          <div class="mini-toggle" id="top-toggle">
-            <button type="button" data-metric="pv" class="active">PV热度</button>
-            <button type="button" data-metric="buy">购买热度</button>
-          </div>
+      <div class="card chart-card" id="module-02">
+        <div class="card-title">商品热度 Top5</div>
+        <div class="mini-toggle" id="top-toggle">
+          <button type="button" data-metric="pv" class="active">PV热度</button>
+          <button type="button" data-metric="buy">购买热度</button>
         </div>
         <div id="chart-top" class="chart"></div>
       </div>
-      <div class="card chart-card">
+      <div class="card chart-card" id="module-03">
         <div class="card-title">转化漏斗</div>
         <div id="chart-funnel" class="chart"></div>
       </div>
-      <div class="card chart-card">
+      <div class="card chart-card" id="module-04">
         <div class="card-title">RFM 用户分布</div>
         <div id="chart-rfm" class="chart"></div>
       </div>
     </main>
 
-    <!-- 右侧：AI 晨报 + 个性化推荐 + 历史时间轴 -->
-    <aside class="report-panel" id="report-panel">
-      <!-- 最新晨报卡片 -->
-      <div class="card report-card">
+    <aside class="side-panel" id="report-panel">
+      <div class="card report-card" id="module-05">
         <div class="card-title">📰 AI 每日晨报</div>
         <div class="report-date" id="report-date"></div>
         <div class="report-summary" id="report-summary"></div>
         <div class="report-highlights" id="report-highlights"></div>
       </div>
 
-      <!-- 个性化推荐列表 -->
-      <div class="card recommend-card">
-        <div class="card-title">
-          <span>🎯 个性化推荐</span>
-          <div class="rec-user-input">
-            <input type="text" id="rec-user-input" placeholder="输入用户ID" class="mini-select" />
-            <button id="rec-refresh" class="mini-btn">刷新</button>
-          </div>
+      <div class="card recommend-card" id="module-06">
+        <div class="card-title">🎯 个性化推荐</div>
+        <div class="rec-user-input">
+          <input type="text" id="rec-user-input" placeholder="输入用户ID" class="mini-select" value="98047837" />
+          <button id="rec-refresh" class="mini-btn">刷新</button>
         </div>
-        <div class="rec-user-label">当前用户：<span id="recommend-user">--</span></div>
+        <div class="rec-user-label">当前用户：<span id="recommend-user">--</span> <span id="recommend-type-tag" class="rec-type-tag hot"></span></div>
         <div class="recommend-list" id="recommend-list"></div>
       </div>
 
-      <!-- 历史报告时间轴 -->
-      <div class="card report-history">
+      <div class="card report-history" id="module-07">
         <div class="card-title">📚 历史报告</div>
         <ul class="timeline" id="report-timeline"></ul>
       </div>
     </aside>
-
   </div>
 
-  <!-- 悬浮 AI 助手入口：点击打开独立聊天页 -->
+  <nav class="bottom-nav">
+    <button class="nav-menu-btn" id="nav-menu-btn">
+      <span></span><span></span><span></span>
+    </button>
+    <div class="nav-numbers" id="nav-numbers">
+      <button class="nav-num-btn" data-module="01">1</button>
+      <button class="nav-num-btn" data-module="02">2</button>
+      <button class="nav-num-btn" data-module="03">3</button>
+      <button class="nav-num-btn" data-module="04">4</button>
+      <button class="nav-num-btn" data-module="05">5</button>
+      <button class="nav-num-btn" data-module="06">6</button>
+      <button class="nav-num-btn" data-module="07">7</button>
+    </div>
+  </nav>
+
+  <div class="module-modal" id="module-modal">
+    <div class="modal-header">
+      <span class="modal-title" id="modal-title"></span>
+      <button class="modal-close" id="modal-close">×</button>
+    </div>
+    <div class="modal-body" id="modal-body"></div>
+  </div>
+
   <a href="chat.html" class="ai-float-btn" title="AI 智能助手">
     <div class="ai-avatar">
       <svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
@@ -107,7 +118,6 @@
     <span class="ai-float-pulse"></span>
   </a>
 
-  <!-- JS：大屏页面不需要 ai_chat.js，它在 chat.html 独立加载 -->
   <script src="js/config.js"></script>
   <script src="js/api.js"></script>
   <script src="js/charts.js"></script>
